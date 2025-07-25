@@ -22,14 +22,16 @@
     "node-roon-api-volume-control": "github:roonlabs/node-roon-api-volume-control#56315d95344c9e0dc98c07c30a2de08727437b1e"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "@jest/globals": "^29.7.0"
+    "@jest/globals": "^29.7.0",
+    "jest": "^29.7.0"
   },
   "jest": {
     "testEnvironment": "node",
     "collectCoverageFrom": [
+      "src/**/*.js",
       "*.js",
-      "!node_modules/**"
+      "!node_modules/**",
+      "!test/**"
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": [
