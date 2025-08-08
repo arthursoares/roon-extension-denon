@@ -15,7 +15,7 @@ var denon = {};
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-    display_version: "2025.1.2",
+    display_version: "2025.8.0",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
@@ -340,8 +340,7 @@ function connect() {
         .catch((error) => {
             debug("setup_denon_connection: Error during setup. Retrying...");
 
-            // TODO: Fix error message
-            console.log(error);
+            debug("Connection error during setup: %O", error);
             svc_status.set_status("Could not connect receiver: " + error, true);
         });
 }
@@ -434,9 +433,7 @@ function create_volume_control(denon) {
                         req.send_complete("Success");
                     })
                     .catch((error) => {
-                        debug("set_volume: Failed with error.");
-
-                        console.log(error);
+                        debug("set_volume: Failed with error: %O", error);
                         req.send_complete("Failed");
                     });
             },
@@ -456,9 +453,7 @@ function create_volume_control(denon) {
                         req.send_complete("Success");
                     })
                     .catch((error) => {
-                        debug("set_mute: Failed.");
-
-                        console.log(error);
+                        debug("set_mute: Failed with error: %O", error);
                         req.send_complete("Failed");
                     });
             },
@@ -528,8 +523,7 @@ function create_source_control(denon) {
                             req.send_complete("Success");
                         })
                         .catch((error) => {
-                            debug("set_standby: Failed with error.");
-                            console.log(error);
+                            debug("set_standby: Failed with error: %O", error);
                             req.send_complete("Failed");
                         });
                 });
