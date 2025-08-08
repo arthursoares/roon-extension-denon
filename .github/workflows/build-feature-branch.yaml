@@ -6,10 +6,10 @@ name: Build Feature Branch Docker
 on:
   push:
     branches:
-      - 'feature/zone-configuration-improvements'
+      - 'feature/*'
   pull_request:
     branches:
-      - 'feature/zone-configuration-improvements'
+      - 'feature/*'
   workflow_dispatch:
     inputs:
       force_build:
@@ -22,7 +22,6 @@ on:
 env:
   REGISTRY: docker.io
   IMAGE_NAME: docbobo/roon-extension-denon
-  FEATURE_TAG: feature-zone-config
 
 jobs:
   build-feature-branch:
@@ -55,18 +54,27 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           
+      - name: Generate dynamic feature tag
+        id: feature-tag
+        run: |
+          BRANCH_NAME="${{ github.ref_name }}"
+          # Convert feature/name to feature-name for Docker tag
+          FEATURE_TAG=${BRANCH_NAME//\//-}
+          echo "feature_tag=${FEATURE_TAG}" >> $GITHUB_OUTPUT
+          echo "Feature tag: ${FEATURE_TAG}"
+          
       - name: Generate Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ env.FEATURE_TAG }}
-            type=raw,value=${{ env.FEATURE_TAG }}-{{sha}}
-            type=ref,event=branch,prefix=${{ env.FEATURE_TAG }}-
+            type=raw,value=${{ steps.feature-tag.outputs.feature_tag }}
+            type=raw,value=${{ steps.feature-tag.outputs.feature_tag }}-{{sha}}
+            type=ref,event=branch,prefix=${{ steps.feature-tag.outputs.feature_tag }}-
           labels: |
             org.opencontainers.image.title=Roon Extension Denon (Feature Branch)
-            org.opencontainers.image.description=Roon Volume Control Extension for Denon/Marantz receivers (Zone Configuration Feature)
+            org.opencontainers.image.description=Roon Volume Control Extension for Denon/Marantz receivers (Feature Branch: ${{ github.ref_name }})
             org.opencontainers.image.vendor=docbobo
             org.opencontainers.image.url=https://github.com/docbobo/roon-extension-denon
             
@@ -78,7 +86,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.FEATURE_TAG }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.feature-tag.outputs.feature_tag }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -87,7 +95,7 @@ jobs:
         run: |
           echo "🧪 Testing container startup..."
           # Start container and capture output
-          CONTAINER_ID=$(docker run --rm -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.FEATURE_TAG }})
+          CONTAINER_ID=$(docker run --rm -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.feature-tag.outputs.feature_tag }})
           echo "Container ID: $CONTAINER_ID"
           
           # Wait for container to start
