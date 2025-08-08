@@ -14,7 +14,8 @@ This is a Roon Volume Control extension for controlling Denon/Marantz AV receive
 
 ### Development
 - The main entry point is `app.js`
-- No build process or test suite is configured
+- Test suite: `npm test` (Jest)
+- Coverage reports: `npm run test:coverage`
 - Uses standard Node.js debugging with the `debug` package
 
 ## Architecture
@@ -60,6 +61,33 @@ The extension is a single-file Node.js application (`app.js`) that integrates se
 - Keep-alive mechanism prevents connection timeout
 - Automatic reconnection on connection loss
 
+## Version Numbering
+
+**Semantic Versioning Scheme**: `YYYY.MINOR.PATCH`
+
+- **Year (YYYY)**: Major version, updated annually
+- **Minor**: New features, breaking changes, significant enhancements  
+- **Patch**: Bug fixes, small improvements, dependency updates
+
+**Examples**:
+- `2025.1.0` - First release of year with new features
+- `2025.1.1` - Patch release with bug fixes
+- `2025.2.0` - New minor version with feature additions
+- `2025.8.0` - Multi-Zone Configuration feature
+
+## Multi-Zone Configuration (v2025.8.0+)
+
+**New Features**:
+- Zone selection: Main Zone or Zone 2 control
+- Coordinated power control: Option to power off both zones simultaneously
+- Enhanced settings UI with dropdown controls
+- Comprehensive zone management functions with full test coverage
+
+**Zone Configuration Options**:
+- `zone: "main"` - Controls Main Zone (default, full functionality)
+- `zone: "zone2"` - Controls Zone 2 (power-only control)
+- `powerOffBothZones: true` - Powers off both zones when turning off
+
 ## Important Notes
 
 - Only supports one Denon client connection at a time (receiver limitation)
@@ -67,3 +95,5 @@ The extension is a single-file Node.js application (`app.js`) that integrates se
 - Extension ID: `org.pruessmann.roon.denon`
 - Volume range: -79.5 dB to receiver max, 0.5 dB steps
 - Requires receiver network interface to be enabled
+- Zone 2 supports power control only (no volume/source control)
+- Multi-zone coordination available for power operations
