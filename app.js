@@ -460,6 +460,26 @@ function setup_denon_connection(host) {
             }
         });
 
+        denon.client.on("zone2Changed", (val) => {
+            debug("zone2Changed: val=%s", val);
+            
+            if (mysettings.zone === "zone2") {
+                let old_power_value = denon.source_state.Power;
+                denon.source_state.Power = (val === Denon.Options.Zone2Options.On) ? "ON" : "STANDBY";
+                
+                if (old_power_value != denon.source_state.Power) {
+                    let stat = check_status(
+                        denon.source_state.Power,
+                        denon.source_state.Input,
+                    );
+                    debug("Zone2 power differs - updating");
+                    if (denon.source_control) {
+                        denon.source_control.update_state({ status: stat });
+                    }
+                }
+            }
+        });
+
         denon.keepalive = setInterval(() => {
             // Make regular calls to getBrightness for keep-alive.
             denon.client.getBrightness().then((val) => {
