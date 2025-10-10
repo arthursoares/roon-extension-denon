@@ -399,13 +399,21 @@ function setup_denon_connection(host) {
         });
 
         denon.client.on("masterVolumeMaxChanged", (val) => {
-            debug("masterVolumeMaxChanged: val=%s", val - 80);
+            const newMaxVolume = val - 80;
+            debug("masterVolumeMaxChanged: val=%s (current=%s)", newMaxVolume, denon.volume_state.volume_max);
 
-            denon.volume_state.volume_max = val - 80;
-            if (denon.volume_control) {
-                denon.volume_control.update_state({
-                    volume_max: denon.volume_state.volume_max,
-                });
+            // Only update Roon if the value actually changed
+            if (denon.volume_state.volume_max !== newMaxVolume) {
+                debug("masterVolumeMaxChanged: Value changed from %s to %s - updating Roon",
+                    denon.volume_state.volume_max, newMaxVolume);
+                denon.volume_state.volume_max = newMaxVolume;
+                if (denon.volume_control) {
+                    denon.volume_control.update_state({
+                        volume_max: denon.volume_state.volume_max,
+                    });
+                }
+            } else {
+                debug("masterVolumeMaxChanged: Value unchanged, skipping Roon update");
             }
         });
 
