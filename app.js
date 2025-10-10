@@ -156,7 +156,22 @@ var svc_settings = new RoonApiSettings(roon, {
                 var old_powerOffBothZones = mysettings.powerOffBothZones;
                 var old_audyssey = JSON.parse(JSON.stringify(mysettings.audyssey || {}));
 
+                // Extract Audyssey settings from flat properties (Roon API behavior)
+                const new_audyssey = {
+                    dynamicEQ: l.values["audyssey.dynamicEQ"] !== undefined
+                        ? l.values["audyssey.dynamicEQ"]
+                        : (l.values.audyssey ? l.values.audyssey.dynamicEQ : false),
+                    dynamicVolume: l.values["audyssey.dynamicVolume"] !== undefined
+                        ? l.values["audyssey.dynamicVolume"]
+                        : (l.values.audyssey ? l.values.audyssey.dynamicVolume : "OFF"),
+                    referenceLevel: l.values["audyssey.referenceLevel"] !== undefined
+                        ? l.values["audyssey.referenceLevel"]
+                        : (l.values.audyssey ? l.values.audyssey.referenceLevel : 5)
+                };
+
                 mysettings = l.values;
+                // Store Audyssey settings in nested format for persistence
+                mysettings.audyssey = new_audyssey;
                 svc_settings.update_settings(l);
 
                 // Check if connection settings changed
@@ -170,22 +185,22 @@ var svc_settings = new RoonApiSettings(roon, {
                 }
 
                 // Check if Audyssey settings changed and apply them
-                if (denon.audyssey && mysettings.audyssey) {
-                    if (old_audyssey.dynamicEQ !== mysettings.audyssey.dynamicEQ) {
-                        debug("Dynamic EQ changed to: %s", mysettings.audyssey.dynamicEQ);
-                        denon.audyssey.setDynamicEQ(mysettings.audyssey.dynamicEQ).catch((err) => {
+                if (denon.audyssey) {
+                    if (old_audyssey.dynamicEQ !== new_audyssey.dynamicEQ) {
+                        debug("Dynamic EQ changed to: %s", new_audyssey.dynamicEQ);
+                        denon.audyssey.setDynamicEQ(new_audyssey.dynamicEQ).catch((err) => {
                             debug("Failed to set Dynamic EQ: %O", err);
                         });
                     }
-                    if (old_audyssey.dynamicVolume !== mysettings.audyssey.dynamicVolume) {
-                        debug("Dynamic Volume changed to: %s", mysettings.audyssey.dynamicVolume);
-                        denon.audyssey.setDynamicVolume(mysettings.audyssey.dynamicVolume).catch((err) => {
+                    if (old_audyssey.dynamicVolume !== new_audyssey.dynamicVolume) {
+                        debug("Dynamic Volume changed to: %s", new_audyssey.dynamicVolume);
+                        denon.audyssey.setDynamicVolume(new_audyssey.dynamicVolume).catch((err) => {
                             debug("Failed to set Dynamic Volume: %O", err);
                         });
                     }
-                    if (old_audyssey.referenceLevel !== mysettings.audyssey.referenceLevel) {
-                        debug("Reference Level changed to: %s", mysettings.audyssey.referenceLevel);
-                        denon.audyssey.setReferenceLevel(mysettings.audyssey.referenceLevel).catch((err) => {
+                    if (old_audyssey.referenceLevel !== new_audyssey.referenceLevel) {
+                        debug("Reference Level changed to: %s", new_audyssey.referenceLevel);
+                        denon.audyssey.setReferenceLevel(new_audyssey.referenceLevel).catch((err) => {
                             debug("Failed to set Reference Level: %O", err);
                         });
                     }
