@@ -169,6 +169,9 @@ var svc_settings = new RoonApiSettings(roon, {
                         : (l.values.audyssey ? l.values.audyssey.referenceLevel : 5)
                 };
 
+                debug("Audyssey settings extracted from UI: dynamicEQ=%s, dynamicVolume=%s, referenceLevel=%s",
+                    new_audyssey.dynamicEQ, new_audyssey.dynamicVolume, new_audyssey.referenceLevel);
+
                 mysettings = l.values;
                 // Store Audyssey settings in nested format for persistence
                 mysettings.audyssey = new_audyssey;
@@ -186,26 +189,53 @@ var svc_settings = new RoonApiSettings(roon, {
 
                 // Check if Audyssey settings changed and apply them
                 if (denon.audyssey) {
+                    let audysseyChanged = false;
+
                     if (old_audyssey.dynamicEQ !== new_audyssey.dynamicEQ) {
-                        debug("Dynamic EQ changed to: %s", new_audyssey.dynamicEQ);
-                        denon.audyssey.setDynamicEQ(new_audyssey.dynamicEQ).catch((err) => {
-                            debug("Failed to set Dynamic EQ: %O", err);
-                        });
+                        audysseyChanged = true;
+                        debug("Audyssey: Dynamic EQ changed from %s to %s - applying to receiver",
+                            old_audyssey.dynamicEQ, new_audyssey.dynamicEQ);
+                        denon.audyssey.setDynamicEQ(new_audyssey.dynamicEQ)
+                            .then(() => {
+                                debug("Audyssey: Dynamic EQ successfully set to %s", new_audyssey.dynamicEQ);
+                            })
+                            .catch((err) => {
+                                debug("Audyssey: Failed to set Dynamic EQ: %O", err);
+                            });
                     }
                     if (old_audyssey.dynamicVolume !== new_audyssey.dynamicVolume) {
-                        debug("Dynamic Volume changed to: %s", new_audyssey.dynamicVolume);
-                        denon.audyssey.setDynamicVolume(new_audyssey.dynamicVolume).catch((err) => {
-                            debug("Failed to set Dynamic Volume: %O", err);
-                        });
+                        audysseyChanged = true;
+                        debug("Audyssey: Dynamic Volume changed from %s to %s - applying to receiver",
+                            old_audyssey.dynamicVolume, new_audyssey.dynamicVolume);
+                        denon.audyssey.setDynamicVolume(new_audyssey.dynamicVolume)
+                            .then(() => {
+                                debug("Audyssey: Dynamic Volume successfully set to %s", new_audyssey.dynamicVolume);
+                            })
+                            .catch((err) => {
+                                debug("Audyssey: Failed to set Dynamic Volume: %O", err);
+                            });
                     }
                     if (old_audyssey.referenceLevel !== new_audyssey.referenceLevel) {
-                        debug("Reference Level changed to: %s", new_audyssey.referenceLevel);
-                        denon.audyssey.setReferenceLevel(new_audyssey.referenceLevel).catch((err) => {
-                            debug("Failed to set Reference Level: %O", err);
-                        });
+                        audysseyChanged = true;
+                        debug("Audyssey: Reference Level changed from %s to %s - applying to receiver",
+                            old_audyssey.referenceLevel, new_audyssey.referenceLevel);
+                        denon.audyssey.setReferenceLevel(new_audyssey.referenceLevel)
+                            .then(() => {
+                                debug("Audyssey: Reference Level successfully set to %s", new_audyssey.referenceLevel);
+                            })
+                            .catch((err) => {
+                                debug("Audyssey: Failed to set Reference Level: %O", err);
+                            });
                     }
+
+                    if (!audysseyChanged) {
+                        debug("Audyssey: No settings changed, skipping application");
+                    }
+                } else {
+                    debug("Audyssey: Client not initialized, cannot apply settings");
                 }
 
+                debug("Saving settings to config file");
                 roon.save_config("settings", mysettings);
             }
         });
@@ -450,17 +480,25 @@ function connect() {
 }
 
 function apply_audyssey_settings() {
-    debug("Applying Audyssey settings");
+    debug("Audyssey: Applying all settings - dynamicEQ=%s, dynamicVolume=%s, referenceLevel=%s",
+        mysettings.audyssey.dynamicEQ, mysettings.audyssey.dynamicVolume, mysettings.audyssey.referenceLevel);
 
     return denon.audyssey
         .setDynamicEQ(mysettings.audyssey.dynamicEQ)
-        .then(() => denon.audyssey.setDynamicVolume(mysettings.audyssey.dynamicVolume))
-        .then(() => denon.audyssey.setReferenceLevel(mysettings.audyssey.referenceLevel))
         .then(() => {
-            debug("Audyssey settings applied successfully");
+            debug("Audyssey: Dynamic EQ applied: %s", mysettings.audyssey.dynamicEQ);
+            return denon.audyssey.setDynamicVolume(mysettings.audyssey.dynamicVolume);
+        })
+        .then(() => {
+            debug("Audyssey: Dynamic Volume applied: %s", mysettings.audyssey.dynamicVolume);
+            return denon.audyssey.setReferenceLevel(mysettings.audyssey.referenceLevel);
+        })
+        .then(() => {
+            debug("Audyssey: Reference Level applied: %s", mysettings.audyssey.referenceLevel);
+            debug("Audyssey: All settings applied successfully");
         })
         .catch((error) => {
-            debug("Error applying Audyssey settings: %O", error);
+            debug("Audyssey: Error applying settings: %O", error);
             // Don't fail connection if Audyssey settings fail
         });
 }
@@ -617,28 +655,46 @@ function create_source_control(denon) {
             control_key: 2,
 
             convenience_switch: function (req) {
+                debug("convenience_switch: Triggered for source %s", mysettings.setsource);
+
                 if (denon.source_state.Power === "STANDBY") {
+                    debug("convenience_switch: Power is in standby, turning on");
                     setPowerForZone("ON");
                 }
 
                 // Apply Audyssey settings when switching to this source
                 const applyAudyssey = denon.audyssey && mysettings.audyssey
-                    ? apply_audyssey_settings()
+                    ? (() => {
+                        debug("convenience_switch: Applying Audyssey settings as part of source switch");
+                        return apply_audyssey_settings();
+                    })()
                     : Promise.resolve();
 
                 if (denon.source_state.Input == mysettings.setsource) {
+                    debug("convenience_switch: Already on correct input, applying Audyssey only");
                     applyAudyssey
-                        .then(() => req.send_complete("Success"))
-                        .catch(() => req.send_complete("Success")); // Don't fail if Audyssey fails
+                        .then(() => {
+                            debug("convenience_switch: Completed successfully");
+                            req.send_complete("Success");
+                        })
+                        .catch(() => {
+                            debug("convenience_switch: Completed with Audyssey errors (non-fatal)");
+                            req.send_complete("Success");
+                        }); // Don't fail if Audyssey fails
                 } else {
+                    debug("convenience_switch: Switching input to %s and applying Audyssey", mysettings.setsource);
                     denon.client
                         .setInput(mysettings.setsource)
-                        .then(() => applyAudyssey)
                         .then(() => {
+                            debug("convenience_switch: Input switched successfully");
+                            return applyAudyssey;
+                        })
+                        .then(() => {
+                            debug("convenience_switch: Completed successfully");
                             req.send_complete("Success");
                         })
                         .catch((error) => {
-                            debug("set_source: Failed with error.");
+                            debug("convenience_switch: Failed with error: %O", error);
                             req.send_complete("Failed");
                         });
                 }
