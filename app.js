@@ -307,7 +307,9 @@ function setup_denon_connection(host) {
         denon.keepalive = null;
     }
     if (denon.client) {
-        denon.client.removeAllListeners("close");
+        // Remove all event listeners to prevent memory leaks
+        denon.client.removeAllListeners();
+        denon.client.socket.removeAllListeners();
         denon.client.disconnect();
         delete denon.client;
     }
