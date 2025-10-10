@@ -606,11 +606,19 @@ function create_source_control(denon) {
                     setPowerForZone("ON");
                 }
 
+                // Apply Audyssey settings when switching to this source
+                const applyAudyssey = denon.audyssey && mysettings.audyssey
+                    ? apply_audyssey_settings()
+                    : Promise.resolve();
+
                 if (denon.source_state.Input == mysettings.setsource) {
-                    req.send_complete("Success");
+                    applyAudyssey
+                        .then(() => req.send_complete("Success"))
+                        .catch(() => req.send_complete("Success")); // Don't fail if Audyssey fails
                 } else {
                     denon.client
                         .setInput(mysettings.setsource)
+                        .then(() => applyAudyssey)
                         .then(() => {
                             req.send_complete("Success");
                         })
