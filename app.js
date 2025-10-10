@@ -8,6 +8,7 @@ var debug = require("debug")("roon-extension-denon"),
     RoonApiStatus = require("node-roon-api-status"),
     RoonApiVolumeControl = require("node-roon-api-volume-control"),
     RoonApiSourceControl = require("node-roon-api-source-control"),
+    AudysseyControl = require("./src/audyssey-control"),
     fetch = require("node-fetch"),
     parse = require("fast-xml-parser");
 
@@ -26,6 +27,11 @@ var mysettings = roon.load_config("settings") || {
     setsource: "",
     zone: "main",
     powerOffBothZones: true,
+    audyssey: {
+        dynamicEQ: false,
+        dynamicVolume: "OFF",
+        referenceLevel: 5,
+    },
 };
 
 function make_layout(settings) {
@@ -64,7 +70,51 @@ function make_layout(settings) {
         ],
         setting: "powerOffBothZones",
     });
-    
+
+    // Audyssey Settings Section
+    if (settings.hostname && !settings.err) {
+        l.layout.push({
+            type: "group",
+            title: "Audyssey Settings",
+            items: [
+                {
+                    type: "dropdown",
+                    title: "Dynamic EQ",
+                    subtitle: "Audyssey Dynamic EQ adjusts frequency response for better sound at low volumes",
+                    values: [
+                        { title: "Off", value: false },
+                        { title: "On", value: true }
+                    ],
+                    setting: "audyssey.dynamicEQ",
+                },
+                {
+                    type: "dropdown",
+                    title: "Dynamic Volume",
+                    subtitle: "Audyssey Dynamic Volume maintains consistent volume levels",
+                    values: [
+                        { title: "Off", value: "OFF" },
+                        { title: "Light", value: "LIT" },
+                        { title: "Medium", value: "MED" },
+                        { title: "Heavy", value: "HEV" }
+                    ],
+                    setting: "audyssey.dynamicVolume",
+                },
+                {
+                    type: "dropdown",
+                    title: "Reference Level Offset",
+                    subtitle: "Adjusts the reference level for Audyssey calibration",
+                    values: [
+                        { title: "0 dB", value: 0 },
+                        { title: "5 dB", value: 5 },
+                        { title: "10 dB", value: 10 },
+                        { title: "15 dB", value: 15 }
+                    ],
+                    setting: "audyssey.referenceLevel",
+                }
+            ]
+        });
+    }
+
     if (settings.err) {
         l.has_error = true;
         l.layout.push({
@@ -104,15 +154,43 @@ var svc_settings = new RoonApiSettings(roon, {
                 var old_setsource = mysettings.setsource;
                 var old_zone = mysettings.zone;
                 var old_powerOffBothZones = mysettings.powerOffBothZones;
+                var old_audyssey = JSON.parse(JSON.stringify(mysettings.audyssey || {}));
+
                 mysettings = l.values;
                 svc_settings.update_settings(l);
+
+                // Check if connection settings changed
                 if (
                     old_hostname != mysettings.hostname ||
                     old_setsource != mysettings.setsource ||
                     old_zone != mysettings.zone ||
                     old_powerOffBothZones != mysettings.powerOffBothZones
-                )
+                ) {
                     setup_denon_connection(mysettings.hostname);
+                }
+
+                // Check if Audyssey settings changed and apply them
+                if (denon.audyssey && mysettings.audyssey) {
+                    if (old_audyssey.dynamicEQ !== mysettings.audyssey.dynamicEQ) {
+                        debug("Dynamic EQ changed to: %s", mysettings.audyssey.dynamicEQ);
+                        denon.audyssey.setDynamicEQ(mysettings.audyssey.dynamicEQ).catch((err) => {
+                            debug("Failed to set Dynamic EQ: %O", err);
+                        });
+                    }
+                    if (old_audyssey.dynamicVolume !== mysettings.audyssey.dynamicVolume) {
+                        debug("Dynamic Volume changed to: %s", mysettings.audyssey.dynamicVolume);
+                        denon.audyssey.setDynamicVolume(mysettings.audyssey.dynamicVolume).catch((err) => {
+                            debug("Failed to set Dynamic Volume: %O", err);
+                        });
+                    }
+                    if (old_audyssey.referenceLevel !== mysettings.audyssey.referenceLevel) {
+                        debug("Reference Level changed to: %s", mysettings.audyssey.referenceLevel);
+                        denon.audyssey.setReferenceLevel(mysettings.audyssey.referenceLevel).catch((err) => {
+                            debug("Failed to set Reference Level: %O", err);
+                        });
+                    }
+                }
+
                 roon.save_config("settings", mysettings);
             }
         });
@@ -321,6 +399,10 @@ function connect() {
     denon.client
         .connect()
         .then(() => {
+            // Initialize Audyssey control
+            denon.audyssey = new AudysseyControl(denon.client);
+            debug("Audyssey control initialized");
+
             // Only create volume control for Main Zone
             if (mysettings.zone === "main") {
                 return create_volume_control(denon);
@@ -334,6 +416,13 @@ function connect() {
                 : Promise.resolve(),
         )
         .then(() => {
+            // Apply saved Audyssey settings after connection
+            if (denon.audyssey && mysettings.audyssey) {
+                return apply_audyssey_settings();
+            }
+            return Promise.resolve();
+        })
+        .then(() => {
             const zoneInfo = mysettings.zone === "zone2" ? " (Zone 2 - Power Only)" : "";
             svc_status.set_status("Connected to receiver" + zoneInfo, false);
         })
@@ -342,6 +431,22 @@ function connect() {
 
             debug("Connection error during setup: %O", error);
             svc_status.set_status("Could not connect receiver: " + error, true);
+        });
+}
+
+function apply_audyssey_settings() {
+    debug("Applying Audyssey settings");
+
+    return denon.audyssey
+        .setDynamicEQ(mysettings.audyssey.dynamicEQ)
+        .then(() => denon.audyssey.setDynamicVolume(mysettings.audyssey.dynamicVolume))
+        .then(() => denon.audyssey.setReferenceLevel(mysettings.audyssey.referenceLevel))
+        .then(() => {
+            debug("Audyssey settings applied successfully");
+        })
+        .catch((error) => {
+            debug("Error applying Audyssey settings: %O", error);
+            // Don't fail connection if Audyssey settings fail
         });
 }
 
