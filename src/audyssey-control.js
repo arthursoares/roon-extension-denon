@@ -9,6 +9,19 @@ const debug = require("debug")("roon-extension-denon:audyssey");
 class AudysseyControl {
     constructor(denonClient) {
         this.denonClient = denonClient;
+        this.activeListeners = [];
+    }
+
+    /**
+     * Clean up any pending operations and listeners
+     */
+    cleanup() {
+        debug("Cleaning up AudysseyControl - removing %d active listeners", this.activeListeners.length);
+        // Remove all active data listeners
+        this.activeListeners.forEach(listener => {
+            this.denonClient.removeListener("data", listener);
+        });
+        this.activeListeners = [];
     }
 
     /**
@@ -185,7 +198,7 @@ class AudysseyControl {
                 // Check if this is the response to our command
                 if (response.startsWith(commandPrefix)) {
                     responseReceived = true;
-                    this.denonClient.removeListener("data", onData);
+                    this._removeListener(onData);
                     clearTimeout(timeout);
                     resolve(response);
                 }
@@ -194,12 +207,13 @@ class AudysseyControl {
             // Timeout after 5 seconds
             const timeout = setTimeout(() => {
                 if (!responseReceived) {
-                    this.denonClient.removeListener("data", onData);
+                    this._removeListener(onData);
                     reject(new Error(`Timeout waiting for response to: ${command}`));
                 }
             }, 5000);
 
-            // Listen for response
+            // Listen for response and track it
+            this._addListener(onData);
             this.denonClient.on("data", onData);
 
             // Send command
@@ -207,6 +221,30 @@ class AudysseyControl {
             debug("_sendCommand sending: %s", command);
             socket.write(fullCommand);
         });
+    }
+
+    /**
+     * Add listener to tracking array
+     * @private
+     * @param {Function} listener - Listener function to track
+     */
+    _addListener(listener) {
+        this.activeListeners.push(listener);
+        debug("Added listener, total active: %d", this.activeListeners.length);
+    }
+
+    /**
+     * Remove listener from tracking array
+     * @private
+     * @param {Function} listener - Listener function to remove
+     */
+    _removeListener(listener) {
+        this.denonClient.removeListener("data", listener);
+        const index = this.activeListeners.indexOf(listener);
+        if (index !== -1) {
+            this.activeListeners.splice(index, 1);
+            debug("Removed listener, total active: %d", this.activeListeners.length);
+        }
     }
 }
 
