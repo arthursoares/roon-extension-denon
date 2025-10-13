@@ -722,6 +722,14 @@ function connect() {
         .connect()
         .then(() => {
             debug("LIFECYCLE: Connection established to receiver");
+
+            // Clean up old Audyssey instance before creating new one (prevents memory leak during reconnections)
+            if (denon.audyssey) {
+                debug("LIFECYCLE: Cleaning up old Audyssey instance before creating new one");
+                denon.audyssey.cleanup();
+                delete denon.audyssey;
+            }
+
             // Initialize Audyssey control
             denon.audyssey = new AudysseyControl(denon.client);
             debug("Audyssey control initialized");
