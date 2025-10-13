@@ -403,17 +403,29 @@ function setup_denon_connection(host) {
         });
 
         denon.client.on("close", (had_error) => {
-            debug("Received onClose(%O): Reconnecting...", had_error);
+            debug(
+                "LIFECYCLE: Connection closed - had_error=%s, source_control_exists=%s, volume_control_exists=%s",
+                had_error,
+                !!denon.source_control,
+                !!denon.volume_control,
+            );
 
             if (denon.client) {
                 svc_status.set_status(
                     "Connection closed by receiver. Reconnecting...",
                     true,
                 );
+                debug(
+                    "LIFECYCLE: Scheduling reconnection in 1 second... (client still exists)",
+                );
                 setTimeout(() => {
+                    debug("LIFECYCLE: Executing reconnection attempt");
                     connect();
                 }, 1000);
             } else {
+                debug(
+                    "LIFECYCLE: Client was destroyed, not reconnecting. Setting not configured status.",
+                );
                 svc_status.set_status(
                     "Not configured, please check settings.",
                     true,
@@ -422,36 +434,104 @@ function setup_denon_connection(host) {
         });
 
         denon.client.on("powerChanged", (val) => {
-            debug("powerChanged: val=%s", val);
+            debug("EVENT: powerChanged: val=%s", val);
 
             let old_power_value = denon.source_state.Power;
             denon.source_state.Power = val;
+            debug(
+                "powerChanged: old_power=%s, new_power=%s, input=%s, source_control_exists=%s",
+                old_power_value,
+                denon.source_state.Power,
+                denon.source_state.Input,
+                !!denon.source_control,
+            );
+
             if (old_power_value != denon.source_state.Power) {
                 let stat = check_status(
                     denon.source_state.Power,
                     denon.source_state.Input,
                 );
-                debug("Power differs - updating");
-                if (denon.source_control) {
-                    denon.source_control.update_state({ status: stat });
+                debug(
+                    "powerChanged: Power changed, new status would be=%s",
+                    stat,
+                );
+
+                // Only report to Roon if status is NOT "deselected"
+                // This prevents manual input changes from disrupting Roon's source control
+                if (stat !== "deselected") {
+                    debug(
+                        "powerChanged: Updating source_control with status=%s",
+                        stat,
+                    );
+                    if (denon.source_control) {
+                        denon.source_control.update_state({ status: stat });
+                        debug("powerChanged: update_state called successfully");
+                    } else {
+                        debug(
+                            "powerChanged: WARNING - source_control is null/undefined, cannot update state",
+                        );
+                    }
+                } else {
+                    debug(
+                        "powerChanged: Skipping update to Roon (status is 'deselected', keeping source control active)",
+                    );
                 }
+            } else {
+                debug(
+                    "powerChanged: Power unchanged (%s), no update needed",
+                    denon.source_state.Power,
+                );
             }
         });
 
         denon.client.on("inputChanged", (val) => {
-            debug("inputChanged: val=%s", val);
+            debug("EVENT: inputChanged: val=%s", val);
             let old_Input = denon.source_state.Input;
             denon.source_state.Input = val;
+            debug(
+                "inputChanged: old_input=%s, new_input=%s, power=%s, configured_source=%s, source_control_exists=%s",
+                old_Input,
+                denon.source_state.Input,
+                denon.source_state.Power,
+                mysettings.setsource,
+                !!denon.source_control,
+            );
 
             if (old_Input != denon.source_state.Input) {
                 let stat = check_status(
                     denon.source_state.Power,
                     denon.source_state.Input,
                 );
-                debug("input differs - updating");
-                if (denon.source_control) {
-                    denon.source_control.update_state({ status: stat });
+                debug(
+                    "inputChanged: Input changed, new status would be=%s",
+                    stat,
+                );
+
+                // Only report to Roon if status is NOT "deselected"
+                // This prevents manual input changes from disrupting Roon's source control
+                if (stat !== "deselected") {
+                    debug(
+                        "inputChanged: Updating source_control with status=%s",
+                        stat,
+                    );
+                    if (denon.source_control) {
+                        denon.source_control.update_state({ status: stat });
+                        debug("inputChanged: update_state called successfully");
+                    } else {
+                        debug(
+                            "inputChanged: WARNING - source_control is null/undefined, cannot update state",
+                        );
+                    }
+                } else {
+                    debug(
+                        "inputChanged: Skipping update to Roon (status is 'deselected', keeping source control active)",
+                    );
                 }
+            } else {
+                debug(
+                    "inputChanged: Input unchanged (%s), no update needed",
+                    denon.source_state.Input,
+                );
             }
         });
 
@@ -515,23 +595,61 @@ function setup_denon_connection(host) {
         });
 
         denon.client.on("zone2Changed", (val) => {
-            debug("zone2Changed: val=%s", val);
+            debug("EVENT: zone2Changed: val=%s", val);
 
             if (mysettings.zone === "zone2") {
                 let old_power_value = denon.source_state.Power;
                 denon.source_state.Power =
                     val === Denon.Options.Zone2Options.On ? "ON" : "STANDBY";
+                debug(
+                    "zone2Changed: old_power=%s, new_power=%s, input=%s, source_control_exists=%s",
+                    old_power_value,
+                    denon.source_state.Power,
+                    denon.source_state.Input,
+                    !!denon.source_control,
+                );
 
                 if (old_power_value != denon.source_state.Power) {
                     let stat = check_status(
                         denon.source_state.Power,
                         denon.source_state.Input,
                     );
-                    debug("Zone2 power differs - updating");
-                    if (denon.source_control) {
-                        denon.source_control.update_state({ status: stat });
+                    debug(
+                        "zone2Changed: Zone2 power changed, new status would be=%s",
+                        stat,
+                    );
+
+                    // Only report to Roon if status is NOT "deselected"
+                    // This prevents manual input changes from disrupting Roon's source control
+                    if (stat !== "deselected") {
+                        debug(
+                            "zone2Changed: Updating source_control with status=%s",
+                            stat,
+                        );
+                        if (denon.source_control) {
+                            denon.source_control.update_state({ status: stat });
+                            debug("zone2Changed: update_state called successfully");
+                        } else {
+                            debug(
+                                "zone2Changed: WARNING - source_control is null/undefined, cannot update state",
+                            );
+                        }
+                    } else {
+                        debug(
+                            "zone2Changed: Skipping update to Roon (status is 'deselected', keeping source control active)",
+                        );
                     }
+                } else {
+                    debug(
+                        "zone2Changed: Zone2 power unchanged (%s), no update needed",
+                        denon.source_state.Power,
+                    );
                 }
+            } else {
+                debug(
+                    "zone2Changed: Ignoring event (configured zone is %s)",
+                    mysettings.zone,
+                );
             }
         });
 
@@ -547,41 +665,72 @@ function setup_denon_connection(host) {
 }
 
 function connect() {
+    debug(
+        "LIFECYCLE: connect() called - zone=%s, setsource=%s, existing_source_control=%s, existing_volume_control=%s",
+        mysettings.zone,
+        mysettings.setsource,
+        !!denon.source_control,
+        !!denon.volume_control,
+    );
+
     denon.client
         .connect()
         .then(() => {
+            debug("LIFECYCLE: Connection established to receiver");
             // Initialize Audyssey control
             denon.audyssey = new AudysseyControl(denon.client);
             debug("Audyssey control initialized");
 
             // Only create volume control for Main Zone
             if (mysettings.zone === "main") {
+                debug(
+                    "LIFECYCLE: Creating volume control for Main Zone (if not exists)",
+                );
                 return create_volume_control(denon);
             } else {
+                debug(
+                    "LIFECYCLE: Skipping volume control (zone=%s)",
+                    mysettings.zone,
+                );
                 return Promise.resolve();
             }
         })
-        .then(() =>
-            mysettings.setsource
-                ? create_source_control(denon)
-                : Promise.resolve(),
-        )
+        .then(() => {
+            if (mysettings.setsource) {
+                debug(
+                    "LIFECYCLE: Creating source control for source=%s (if not exists)",
+                    mysettings.setsource,
+                );
+                return create_source_control(denon);
+            } else {
+                debug("LIFECYCLE: No source configured, skipping source control");
+                return Promise.resolve();
+            }
+        })
         .then(() => {
             // Apply saved Audyssey settings after connection
             if (denon.audyssey && mysettings.audyssey) {
+                debug("LIFECYCLE: Applying saved Audyssey settings");
                 return apply_audyssey_settings();
             }
+            debug("LIFECYCLE: No Audyssey settings to apply");
             return Promise.resolve();
         })
         .then(() => {
             const zoneInfo =
                 mysettings.zone === "zone2" ? " (Zone 2 - Power Only)" : "";
             svc_status.set_status("Connected to receiver" + zoneInfo, false);
+            debug(
+                "LIFECYCLE: Connection setup complete - source_control_exists=%s, volume_control_exists=%s",
+                !!denon.source_control,
+                !!denon.volume_control,
+            );
         })
         .catch((error) => {
-            debug("setup_denon_connection: Error during setup. Retrying...");
-
-            debug("Connection error during setup: %O", error);
+            debug(
+                "LIFECYCLE: Connection error during setup. Error: %O. Will not retry automatically from here.",
+                error,
+            );
             svc_status.set_status("Could not connect receiver: " + error, true);
         });
 }
@@ -638,7 +787,13 @@ function check_status(power, input) {
     } else {
         stat = "standby";
     }
-    debug("Receiver Status: %s", stat);
+    debug(
+        "check_status: power=%s, input=%s, configured_source=%s => status=%s",
+        power,
+        input,
+        mysettings.setsource,
+        stat,
+    );
     return stat;
 }
 
@@ -785,8 +940,15 @@ function create_volume_control(denon) {
 }
 
 function create_source_control(denon) {
-    debug("create_source_control: source_control=%o", denon.source_control);
+    debug(
+        "create_source_control: ENTRY - source_control_exists=%s, zone=%s, configured_source=%s",
+        !!denon.source_control,
+        mysettings.zone,
+        mysettings.setsource,
+    );
+
     if (!denon.source_control) {
+        debug("create_source_control: Initializing new source_state object");
         denon.source_state = {
             display_name: mysettings.zone === "zone2" ? "Zone 2" : "Main Zone",
             supports_standby: true,
@@ -801,10 +963,11 @@ function create_source_control(denon) {
 
             convenience_switch: function (req) {
                 debug(
-                    "convenience_switch: Triggered - current Power=%s, Input=%s, target source=%s",
+                    "convenience_switch: CALLED by Roon - current Power=%s, Input=%s, target source=%s, zone=%s",
                     denon.source_state.Power,
                     denon.source_state.Input,
                     mysettings.setsource,
+                    mysettings.zone,
                 );
 
                 const powerWasStandby = denon.source_state.Power === "STANDBY";
@@ -894,14 +1057,25 @@ function create_source_control(denon) {
                 }
             },
             standby: function (req) {
+                debug(
+                    "standby: CALLED - getting current power state for zone=%s",
+                    mysettings.zone,
+                );
                 getPowerForZone().then((val) => {
                     const newPowerState = val === "STANDBY" ? "ON" : "STANDBY";
+                    debug(
+                        "standby: Current power=%s, toggling to %s (powerOffBothZones=%s)",
+                        val,
+                        newPowerState,
+                        mysettings.powerOffBothZones,
+                    );
                     setPowerBothZones(newPowerState)
                         .then(() => {
+                            debug("standby: Power state changed successfully");
                             req.send_complete("Success");
                         })
                         .catch((error) => {
-                            debug("set_standby: Failed with error: %O", error);
+                            debug("standby: Failed with error: %O", error);
                             req.send_complete("Failed");
                         });
                 });
@@ -909,23 +1083,59 @@ function create_source_control(denon) {
         };
     }
 
+    debug("create_source_control: Querying current power state from receiver");
     let result = getPowerForZone()
         .then((val) => {
             denon.source_state.Power = val;
+            debug(
+                "create_source_control: Power state retrieved: %s",
+                denon.source_state.Power,
+            );
             return denon.client.getInput();
         })
         .then((val) => {
             denon.source_state.Input = val;
+            debug(
+                "create_source_control: Input retrieved: %s",
+                denon.source_state.Input,
+            );
             denon.source_state.status = check_status(
                 denon.source_state.Power,
                 denon.source_state.Input,
             );
+            debug(
+                "create_source_control: Initial state determined - Power=%s, Input=%s, Status=%s",
+                denon.source_state.Power,
+                denon.source_state.Input,
+                denon.source_state.status,
+            );
+
             if (denon.source_control) {
+                debug(
+                    "create_source_control: Source control already exists, updating state",
+                );
                 denon.source_control.update_state(denon.source_state);
+                debug(
+                    "create_source_control: State updated with status=%s",
+                    denon.source_state.status,
+                );
             } else {
-                debug("Registering source control extension");
+                debug(
+                    "create_source_control: Registering NEW source control extension with Roon",
+                );
                 denon.source_control = svc_source_control.new_device(device);
+                debug(
+                    "create_source_control: Source control registered successfully - control_key=%s",
+                    device.control_key,
+                );
             }
+        })
+        .catch((error) => {
+            debug(
+                "create_source_control: ERROR during state query or registration: %O",
+                error,
+            );
+            throw error;
         });
     return result;
 }
