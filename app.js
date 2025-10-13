@@ -1040,10 +1040,11 @@ function create_source_control(denon) {
                 const powerOnPromise = powerWasStandby
                     ? setPowerForZone("ON").then(() => {
                           debug(
-                              "convenience_switch: Power turned on, waiting 5 seconds for receiver to be ready",
+                              "convenience_switch: Power turned on, waiting 12 seconds for receiver to be ready",
                           );
-                          // Wait for receiver to be fully powered on before applying Audyssey
-                          return new Promise((resolve) => setTimeout(resolve, 5000));
+                          // Wait for receiver to be fully powered on and initialized before applying Audyssey
+                          // Receiver sends multiple PWON messages and initialization takes ~12s
+                          return new Promise((resolve) => setTimeout(resolve, 12000));
                       })
                     : Promise.resolve();
 
