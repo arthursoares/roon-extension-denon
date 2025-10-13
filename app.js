@@ -461,11 +461,11 @@ function setup_denon_connection(host) {
                     true,
                 );
                 debug(
-                    "LIFECYCLE: Scheduling reconnection in 1 second... (client still exists)",
+                    "LIFECYCLE: Scheduling reconnection in 1 second... (will recreate client to prevent memory leaks)",
                 );
                 setTimeout(() => {
-                    debug("LIFECYCLE: Executing reconnection attempt");
-                    connect();
+                    debug("LIFECYCLE: Executing reconnection attempt - calling setup_denon_connection to clean up and recreate client");
+                    setup_denon_connection(mysettings.hostname);
                 }, 1000);
             } else {
                 debug(
