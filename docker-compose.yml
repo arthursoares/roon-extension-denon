@@ -16,7 +16,8 @@ services:
     # Environment variables (optional)
     environment:
       - NODE_ENV=production
-      - DEBUG=roon-extension-denon*  # Enable debug logging
+      - DEBUG=roon-extension-denon*  # Enable debug logging (excludes raw receiver data)
+      # - DEBUG=roon-extension-denon*,roon-extension-denon:data  # Include raw receiver data
     
     # Health check
     healthcheck:

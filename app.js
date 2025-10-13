@@ -2,6 +2,7 @@
 
 var debug = require("debug")("roon-extension-denon"),
     debug_keepalive = require("debug")("roon-extension-denon:keepalive"),
+    debug_data = require("debug")("roon-extension-denon:data"),
     Denon = require("denon-client"),
     RoonApi = require("node-roon-api"),
     RoonApiSettings = require("node-roon-api-settings"),
@@ -393,8 +394,43 @@ function setup_denon_connection(host) {
             debug("Received onError(%O)", error);
         });
 
+        // Track repetitive messages to reduce log spam
+        let lastDataMessage = null;
+        let dataMessageCount = 0;
+
         denon.client.on("data", (data) => {
-            debug("%s", data);
+            // Filter out repetitive status messages that create log spam
+            const isRepetitiveMessage =
+                data === "SSAST CMP" || // Audyssey status
+                data === "PWSTANDBY" || // Power standby echo
+                data === "PWON"; // Power on echo
+
+            if (data === lastDataMessage) {
+                dataMessageCount++;
+                // Only log first occurrence and every 100th repetition
+                if (dataMessageCount % 100 === 0) {
+                    debug_data(
+                        "RAW: %s (repeated %d times)",
+                        data,
+                        dataMessageCount,
+                    );
+                }
+            } else {
+                // New message - reset counter
+                if (dataMessageCount > 1) {
+                    debug_data(
+                        "RAW: Previous message repeated %d times total",
+                        dataMessageCount,
+                    );
+                }
+                lastDataMessage = data;
+                dataMessageCount = 1;
+
+                // Log non-repetitive messages or first occurrence
+                if (!isRepetitiveMessage) {
+                    debug_data("RAW: %s", data);
+                }
+            }
         });
 
         denon.client.socket.on("timeout", () => {

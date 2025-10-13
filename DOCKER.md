@@ -143,9 +143,12 @@ environment:
 ```
 
 Available debug namespaces:
-- `roon-extension-denon` - Main application logs
+- `roon-extension-denon` - Main application logs (recommended)
 - `roon-extension-denon:keepalive` - Keep-alive ping logs
 - `roon-extension-denon:zone` - Zone-specific operations
+- `roon-extension-denon:data` - Raw receiver data (very verbose, usually not needed)
+
+**Note:** The default `DEBUG=roon-extension-denon*` intentionally excludes `:data` to prevent log spam from repetitive receiver messages (like "SSAST CMP" Audyssey status updates every ~10 seconds).
 
 #### Common Debug Patterns
 
@@ -169,6 +172,22 @@ LIFECYCLE: Connection setup complete
 powerChanged: Updating source_control with status=selected
 inputChanged: update_state called successfully
 ```
+
+**Enable Raw Receiver Data (for protocol debugging):**
+If you need to see ALL raw data from the receiver (e.g., debugging communication issues):
+```yaml
+environment:
+  - DEBUG=roon-extension-denon*,roon-extension-denon:data
+```
+
+This will show messages like:
+```
+RAW: SSAST CMP
+RAW: PWSTANDBY
+RAW: MVMAX 980
+```
+
+Note: Repetitive messages are automatically filtered - only unique messages and every 100th repetition are logged to reduce spam.
 
 ### Persistent Data
 
