@@ -80,16 +80,94 @@ docker-compose --profile bridge up -d
 
 ### Debug Logging
 
-Enable debug logging to troubleshoot issues:
+Enable debug logging to troubleshoot issues. The extension includes comprehensive logging for diagnosing connection problems, state changes, and source control issues.
+
+#### Enable All Debug Output
+
+Edit your `docker-compose.yml` to uncomment or add the DEBUG environment variable:
 ```yaml
 environment:
   - DEBUG=roon-extension-denon*
 ```
 
-Or for specific debug areas:
+Then restart the container:
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+#### View Debug Logs
+
+View real-time logs with:
+```bash
+docker-compose logs -f
+```
+
+Or view logs for the last hour:
+```bash
+docker-compose logs --since 1h
+```
+
+#### Debug Output Categories
+
+The extension now provides detailed logging for:
+
+**State Changes:**
+- Power state transitions (ON/STANDBY)
+- Input source changes
+- Volume and mute changes
+- Status determination (selected/deselected/standby)
+
+**Connection Lifecycle:**
+- Connection establishment and disconnection
+- Reconnection attempts
+- Control registration with Roon
+- Keep-alive ping activity
+
+**Event Handlers:**
+- Receiver events (powerChanged, inputChanged, zone2Changed)
+- Before/after state comparisons
+- Skipped updates (e.g., deselected status suppression)
+
+**User Actions:**
+- Source control button presses (convenience_switch)
+- Standby/power toggle requests
+- Volume control changes
+
+#### Specific Debug Areas
+
+For focused debugging, enable specific areas:
 ```yaml
 environment:
   - DEBUG=roon-extension-denon:zone,roon-extension-denon:keepalive
+```
+
+Available debug namespaces:
+- `roon-extension-denon` - Main application logs
+- `roon-extension-denon:keepalive` - Keep-alive ping logs
+- `roon-extension-denon:zone` - Zone-specific operations
+
+#### Common Debug Patterns
+
+**Troubleshooting Source Control Issues:**
+Look for these log patterns:
+```
+inputChanged: Skipping update to Roon (status is 'deselected', keeping source control active)
+check_status: power=ON, input=TV, configured_source=CD => status=deselected
+```
+
+**Tracking Reconnections:**
+```
+LIFECYCLE: Connection closed
+LIFECYCLE: Scheduling reconnection in 1 second...
+LIFECYCLE: Executing reconnection attempt
+LIFECYCLE: Connection setup complete
+```
+
+**Verifying State Updates:**
+```
+powerChanged: Updating source_control with status=selected
+inputChanged: update_state called successfully
 ```
 
 ### Persistent Data
