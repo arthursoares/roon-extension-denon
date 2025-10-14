@@ -3,6 +3,7 @@
 var debug = require("debug")("roon-extension-denon"),
     debug_keepalive = require("debug")("roon-extension-denon:keepalive"),
     debug_data = require("debug")("roon-extension-denon:data"),
+    debug_roon = require("debug")("roon-extension-denon:roon"),
     Denon = require("./lib/denon-client"),
     RoonApi = require("node-roon-api"),
     RoonApiSettings = require("node-roon-api-settings"),
@@ -14,6 +15,18 @@ var debug = require("debug")("roon-extension-denon"),
     parse = require("fast-xml-parser");
 
 var denon = {};
+
+// Connection monitoring
+var roon_connection = {
+    connected: false,
+    core_id: null,
+    core_name: null,
+    last_paired: null,
+    last_unpaired: null,
+    disconnect_count: 0,
+    pair_count: 0,
+};
+
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
@@ -21,6 +34,69 @@ var roon = new RoonApi({
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
+
+    core_paired: function (core) {
+        const now = new Date().toISOString();
+        roon_connection.connected = true;
+        roon_connection.core_id = core.core_id;
+        roon_connection.core_name = core.display_name;
+        roon_connection.last_paired = now;
+        roon_connection.pair_count++;
+
+        debug_roon(
+            "ROON PAIRED: core_id=%s, name=%s, version=%s, pair_count=%d, timestamp=%s",
+            core.core_id,
+            core.display_name,
+            core.display_version,
+            roon_connection.pair_count,
+            now,
+        );
+
+        // Log control registration state
+        debug_roon(
+            "ROON PAIRED: Controls status - volume_control=%s, source_control=%s",
+            denon.volume_control ? "registered" : "not registered",
+            denon.source_control ? "registered" : "not registered",
+        );
+    },
+
+    core_unpaired: function (core) {
+        const now = new Date().toISOString();
+        const was_connected = roon_connection.connected;
+        const time_connected = roon_connection.last_paired
+            ? (new Date(now) - new Date(roon_connection.last_paired)) / 1000
+            : 0;
+
+        roon_connection.connected = false;
+        roon_connection.last_unpaired = now;
+        roon_connection.disconnect_count++;
+
+        debug_roon(
+            "ROON UNPAIRED: core_id=%s, name=%s, disconnect_count=%d, time_connected=%ds, timestamp=%s",
+            core.core_id,
+            core.display_name,
+            roon_connection.disconnect_count,
+            Math.round(time_connected),
+            now,
+        );
+
+        // Log control status at time of disconnect
+        debug_roon(
+            "ROON UNPAIRED: Controls status - volume_control=%s, source_control=%s, denon_connection=%s",
+            denon.volume_control ? "was registered" : "not registered",
+            denon.source_control ? "was registered" : "not registered",
+            denon.client ? "connected" : "disconnected",
+        );
+
+        // Warn if disconnecting frequently
+        if (roon_connection.disconnect_count > 5 && time_connected < 120) {
+            debug_roon(
+                "ROON UNPAIRED WARNING: Frequent disconnections detected (%d disconnects, last connection only %ds). Check network stability and logs for 'MOO: empty message received'.",
+                roon_connection.disconnect_count,
+                Math.round(time_connected),
+            );
+        }
+    },
 });
 
 var mysettings = roon.load_config("settings") || {
@@ -998,7 +1074,18 @@ function create_volume_control(denon) {
                 denon.volume_control.update_state(denon.volume_state);
             } else {
                 debug("Registering volume control extension");
+                debug_roon(
+                    "CONTROL REGISTRATION: Volume control being registered with Roon - display_name=%s, volume=%s dB, muted=%s, roon_connected=%s",
+                    denon.volume_state.display_name,
+                    denon.volume_state.volume_value,
+                    denon.volume_state.is_muted,
+                    roon_connection.connected,
+                );
                 denon.volume_control = svc_volume_control.new_device(device);
+                debug_roon(
+                    "CONTROL REGISTRATION: Volume control registered successfully - control_key=%s",
+                    device.control_key,
+                );
             }
         });
     return result;
@@ -1193,9 +1280,21 @@ function create_source_control(denon) {
                 debug(
                     "create_source_control: Registering NEW source control extension with Roon",
                 );
+                debug_roon(
+                    "CONTROL REGISTRATION: Source control being registered with Roon - display_name=%s, status=%s, power=%s, input=%s, roon_connected=%s",
+                    denon.source_state.display_name,
+                    denon.source_state.status,
+                    denon.source_state.Power,
+                    denon.source_state.Input,
+                    roon_connection.connected,
+                );
                 denon.source_control = svc_source_control.new_device(device);
                 debug(
                     "create_source_control: Source control registered successfully - control_key=%s",
+                    device.control_key,
+                );
+                debug_roon(
+                    "CONTROL REGISTRATION: Source control registered successfully - control_key=%s",
                     device.control_key,
                 );
             }
@@ -1211,5 +1310,29 @@ function create_source_control(denon) {
 }
 
 setup_denon_connection(mysettings.hostname);
+
+// Periodic connection health monitoring
+setInterval(() => {
+    const controls_registered =
+        (denon.volume_control ? 1 : 0) + (denon.source_control ? 1 : 0);
+    const should_have_controls = denon.client && mysettings.hostname;
+
+    debug_roon(
+        "CONNECTION HEALTH: roon_connected=%s, controls=%d/%d, denon_client=%s, disconnect_count=%d, pair_count=%d",
+        roon_connection.connected,
+        controls_registered,
+        should_have_controls ? (mysettings.zone === "main" ? 2 : 1) : 0,
+        denon.client ? "connected" : "not connected",
+        roon_connection.disconnect_count,
+        roon_connection.pair_count,
+    );
+
+    // Warn if Roon is connected but controls are missing
+    if (roon_connection.connected && should_have_controls && controls_registered === 0) {
+        debug_roon(
+            "CONNECTION HEALTH WARNING: Roon is connected but no controls are registered! This may indicate a problem.",
+        );
+    }
+}, 60000); // Log every 60 seconds
 
 roon.start_discovery();
