@@ -13,10 +13,15 @@ GPL-3.0 (see LICENSE file)
 ### 1. Fixed EventEmitter Memory Leak (connection.js)
 **Issue:** The library called `initializeSocket()` twice - once in the constructor and again in `connect()`, causing duplicate socket initialization and EventEmitter memory leak warnings during reconnections.
 
-**Fix:** Removed `initializeSocket()` call from constructor, keeping only the call in `connect()` method. This prevents duplicate listener registration.
+**Fix:** Added a guard flag `_socketInitialized` to prevent double initialization. The socket is initialized once in the constructor, and the redundant call in `connect()` is skipped via the guard.
 
 **Files Changed:**
-- `lib/connection.js` - Removed line 27 `this.initializeSocket()`
+- `lib/connection.js`:
+  - Added `_socketInitialized` flag in constructor
+  - Added guard in `initializeSocket()` to prevent double initialization
+  - Commented out redundant `initializeSocket()` call in `connect()` method
+
+**Why this approach:** Maintains compatibility with code that expects `socket` to exist immediately after client creation, while preventing the memory leak from double initialization.
 
 ### 2. Future Modernization (Planned)
 - Replace bluebird with native Promises
