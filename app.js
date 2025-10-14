@@ -394,6 +394,11 @@ function setup_denon_connection(host) {
         svc_status.set_status("Connecting to " + host + "...", false);
 
         denon.client = new Denon.DenonClient(host);
+
+        // Increase max listeners to prevent warnings from keep-alive once() listeners
+        // These are legitimate temporary listeners that clean up after themselves
+        denon.client.setMaxListeners(20);
+
         denon.client.socket.setTimeout(0);
         denon.client.socket.setKeepAlive(true, 10000);
 
@@ -694,9 +699,13 @@ function setup_denon_connection(host) {
 
         denon.keepalive = setInterval(() => {
             // Make regular calls to getBrightness for keep-alive.
-            denon.client.getBrightness().then((val) => {
-                debug_keepalive("Keep-Alive: getInput == %s", val);
-            });
+            denon.client.getBrightness()
+                .then((val) => {
+                    debug_keepalive("Keep-Alive: getBrightness == %s", val);
+                })
+                .catch((err) => {
+                    debug_keepalive("Keep-Alive: getBrightness failed: %O", err);
+                });
         }, 60000);
 
         connect();
