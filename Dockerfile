@@ -18,6 +18,7 @@ RUN npm install --only=production && npm cache clean --force
 # Bundle app source (exclude test files and coverage)
 COPY --chown=roon:nodejs app.js ./
 COPY --chown=roon:nodejs src/ ./src/
+COPY --chown=roon:nodejs lib/ ./lib/
 COPY --chown=roon:nodejs CLAUDE.md ./
 
 # Switch to non-root user
