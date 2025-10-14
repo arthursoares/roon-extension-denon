@@ -1,0 +1,21 @@
+diff --git a/node_modules/node-roon-api/transport-websocket.js b/node_modules/node-roon-api/transport-websocket.js
+index e46b0eb..0243772 100644
+--- a/node_modules/node-roon-api/transport-websocket.js
++++ b/node_modules/node-roon-api/transport-websocket.js
+@@ -49,6 +49,16 @@ function Transport(ip, port, logger) {
+         if (!this.moo) {
+             return;
+         }
++
++        // Handle empty WebSocket frames (ping/pong heartbeats)
++        // Empty frames are valid WebSocket behavior - ignore them gracefully
++        // This prevents disconnection when Roon Core sends heartbeat frames
++        const data = event.data;
++        if (!data || (data.length !== undefined && data.length === 0)) {
++            // Silently ignore empty frames - they're part of WebSocket keep-alive
++            return;
++        }
++
+         const msg = this.moo.parse(event.data);
+         if (!msg) {
+             this.close();

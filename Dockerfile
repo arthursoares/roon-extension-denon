@@ -12,7 +12,12 @@ RUN addgroup -g 1001 -S nodejs && \
 # where available (npm@5+)
 COPY package*.json ./
 
+# Copy patches directory BEFORE npm install so postinstall can apply patches
+# This ensures the node-roon-api WebSocket fix is applied during Docker build
+COPY patches/ ./patches/
+
 # Install production dependencies only
+# The postinstall script will automatically apply patches from patches/
 RUN npm install --only=production && npm cache clean --force
 
 # Bundle app source (exclude test files and coverage)
