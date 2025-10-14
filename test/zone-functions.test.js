@@ -11,8 +11,8 @@ const mockDenonClient = {
     setZone2: jest.fn()
 };
 
-// Mock denon-client module
-jest.mock('denon-client', () => ({
+// Mock denon-client module (now local forked version)
+jest.mock('../lib/denon-client', () => ({
     Options: {
         Zone2Options: {
             On: 'Z2ON',

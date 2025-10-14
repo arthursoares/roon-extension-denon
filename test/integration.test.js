@@ -3,8 +3,8 @@
 const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals');
 const ZoneFunctions = require('../src/zone-functions');
 
-// Mock denon-client
-jest.mock('denon-client', () => ({
+// Mock denon-client (now local forked version)
+jest.mock('../lib/denon-client', () => ({
     Options: {
         Zone2Options: {
             On: 'Z2ON',

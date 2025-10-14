@@ -18,7 +18,7 @@ class ZoneFunctions {
     getPowerForZone() {
         if (this.settings.zone === "zone2") {
             return this.denonClient.getZone2().then(status => {
-                const Denon = require("denon-client");
+                const Denon = require("../lib/denon-client");
                 return (status === Denon.Options.Zone2Options.On) ? "ON" : "STANDBY";
             });
         } else {
@@ -33,9 +33,9 @@ class ZoneFunctions {
      */
     setPowerForZone(powerState) {
         if (this.settings.zone === "zone2") {
-            const Denon = require("denon-client");
-            const zone2State = (powerState === "ON") ? 
-                Denon.Options.Zone2Options.On : 
+            const Denon = require("../lib/denon-client");
+            const zone2State = (powerState === "ON") ?
+                Denon.Options.Zone2Options.On :
                 Denon.Options.Zone2Options.Off;
             return this.denonClient.setZone2(zone2State);
         } else {
@@ -50,13 +50,13 @@ class ZoneFunctions {
      */
     setPowerBothZones(powerState) {
         debug("setPowerBothZones: powerState=%s", powerState);
-        
+
         if (this.settings.powerOffBothZones && powerState === "STANDBY") {
             // Turn off both zones when powering off
-            const Denon = require("denon-client");
+            const Denon = require("../lib/denon-client");
             const mainZonePromise = this.denonClient.setPower("STANDBY");
             const zone2Promise = this.denonClient.setZone2(Denon.Options.Zone2Options.Off);
-            
+
             return Promise.all([mainZonePromise, zone2Promise]).then(() => {
                 debug("Both zones powered off successfully");
             }).catch(error => {
