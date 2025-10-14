@@ -410,23 +410,17 @@ function setup_denon_connection(host) {
         denon.client.on("data", (data) => {
             // Filter out repetitive status messages that create log spam
             const isRepetitiveMessage =
-                data === "SSAST CMP" || // Audyssey status
+                data === "SSAST CMP" || // Audyssey status (~every 100ms)
                 data === "PWSTANDBY" || // Power standby echo
                 data === "PWON"; // Power on echo
 
             if (data === lastDataMessage) {
                 dataMessageCount++;
-                // Only log first occurrence and every 100th repetition
-                if (dataMessageCount % 100 === 0) {
-                    debug_data(
-                        "RAW: %s (repeated %d times)",
-                        data,
-                        dataMessageCount,
-                    );
-                }
+                // Don't log repetitive messages while they're repeating
+                // We'll log a summary when the pattern changes
             } else {
-                // New message - reset counter
-                if (dataMessageCount > 1) {
+                // New message - log summary of previous message if it repeated
+                if (dataMessageCount > 1 && lastDataMessage) {
                     debug_data(
                         "RAW: Previous message repeated %d times total",
                         dataMessageCount,
