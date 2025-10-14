@@ -3,7 +3,7 @@
 var debug = require("debug")("roon-extension-denon"),
     debug_keepalive = require("debug")("roon-extension-denon:keepalive"),
     debug_data = require("debug")("roon-extension-denon:data"),
-    Denon = require("denon-client"),
+    Denon = require("./lib/denon-client"),
     RoonApi = require("node-roon-api"),
     RoonApiSettings = require("node-roon-api-settings"),
     RoonApiStatus = require("node-roon-api-status"),
