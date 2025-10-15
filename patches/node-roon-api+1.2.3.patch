@@ -1,8 +1,111 @@
+diff --git a/node_modules/node-roon-api/moo.js b/node_modules/node-roon-api/moo.js
+index 13d65e6..9eb6fce 100644
+--- a/node_modules/node-roon-api/moo.js
++++ b/node_modules/node-roon-api/moo.js
+@@ -96,7 +96,7 @@ Moo.prototype.parse = function(buf) {
+     }
+ 
+     if (buf.length == 0) {
+-        this.logger.log("MOO: empty message received");
++        this.logger.log("MOO: empty message received [DIAGNOSTIC: This should be caught by transport layer]");
+         return undefined;
+     }
+ 
+@@ -108,30 +108,30 @@ Moo.prototype.parse = function(buf) {
+                 if (s == e) { // is blank line? blank line is end of headers
+                     // end of MOO header
+                     if (msg.request_id === undefined) {
+-                        this.logger.log('MOO: missing Request-Id header: ', msg);
++                        this.logger.log('[MOO_ERROR] Missing Request-Id header:', JSON.stringify(msg));
+                         return undefined;
+                     }
+                     if (msg.content_length === undefined) {
+                         if (msg.content_type) {
+-                            this.logger.log("MOO: bad message; has Content-Type but not Content-Length: ", msg);
++                            this.logger.log("[MOO_ERROR] Has Content-Type but not Content-Length:", JSON.stringify(msg));
+                             return undefined;
+                         }
+                         if (e != buf.length - 1) {
+-                            this.logger.log("MOO: bad message; has no Content-Length, but data after headers: ", msg);
++                            this.logger.log("[MOO_ERROR] No Content-Length but data after headers:", JSON.stringify(msg), "buf_length:", buf.length, "e:", e);
+                             return undefined;
+                         }
+ 
+                     } else {
+                         if (msg.content_length > 0) {
+                             if (!msg.content_type) {
+-                                this.logger.log("MOO: bad message; has Content-Length but not Content-Type: ",  msg);
++                                this.logger.log("[MOO_ERROR] Has Content-Length but not Content-Type:", JSON.stringify(msg));
+                                 return undefined;
+                             } else if (msg.content_type == "application/json") {
+                                 var json = buf.toString('utf8', e+1, e+1+msg.content_length);
+                                 try {
+                                     msg.body = JSON.parse(json);
+                                 } catch (e) {
+-                                    this.logger.log("MOO: bad json body: ", json, msg);
++                                    this.logger.log("[MOO_ERROR] Bad JSON body:", e.message, "json:", json, "msg:", JSON.stringify(msg));
+                                     return undefined;
+                                 }
+                             } else {
+@@ -154,7 +154,7 @@ Moo.prototype.parse = function(buf) {
+                         else
+                             msg.headers[matches[1]] = matches[2];
+                     } else {
+-                        this.logger.log("MOO: bad header line: ", line, msg);
++                        this.logger.log("[MOO_ERROR] Bad header line:", line, "msg:", JSON.stringify(msg));
+                         return undefined;
+                     }
+                 }
+@@ -170,7 +170,7 @@ Moo.prototype.parse = function(buf) {
+                             msg.service = matches[1];
+                             msg.name = matches[2];
+                         } else {
+-                            this.logger.log("MOO: bad first line: ", line, msg);
++                            this.logger.log("[MOO_ERROR] Bad first line (REQUEST format):", line, "msg:", JSON.stringify(msg));
+                             return undefined;
+                         }
+                     } else {
+@@ -178,7 +178,7 @@ Moo.prototype.parse = function(buf) {
+                     }
+                     state = 'header';
+                 } else {
+-                    this.logger.log("MOO: bad first line: ", line, msg);
++                    this.logger.log("[MOO_ERROR] Bad first line (protocol):", line, "msg:", JSON.stringify(msg));
+                     return undefined;
+                 }
+             }
+@@ -186,7 +186,7 @@ Moo.prototype.parse = function(buf) {
+         }
+         e++;
+     }
+-    this.logger.log("MOO: message lacks newline in header");
++    this.logger.log("[MOO_ERROR] Message lacks newline in header, buf_length:", buf.length, "e:", e);
+     return undefined;
+ };
+ 
 diff --git a/node_modules/node-roon-api/transport-websocket.js b/node_modules/node-roon-api/transport-websocket.js
-index e46b0eb..0243772 100644
+index e46b0eb..fa154bb 100644
 --- a/node_modules/node-roon-api/transport-websocket.js
 +++ b/node_modules/node-roon-api/transport-websocket.js
-@@ -49,6 +49,16 @@ function Transport(ip, port, logger) {
+@@ -34,7 +34,16 @@ function Transport(ip, port, logger) {
+         this.onopen();
+     };
+ 
+-    this.ws.onclose = () => {
++    this.ws.onclose = (event) => {
++        // Diagnostic logging for WebSocket close events
++        logger.log('[WS_CLOSE]', {
++            timestamp: new Date().toISOString(),
++            host: this.host,
++            port: this.port,
++            code: event.code,
++            reason: event.reason,
++            wasClean: event.wasClean
++        });
+         this.is_alive = false;
+         clearInterval(this.interval);
+         this.interval = null;
+@@ -49,8 +58,28 @@ function Transport(ip, port, logger) {
          if (!this.moo) {
              return;
          }
@@ -18,4 +121,16 @@ index e46b0eb..0243772 100644
 +
          const msg = this.moo.parse(event.data);
          if (!msg) {
++            // Diagnostic logging for MOO parse failures
++            const data = event.data;
++            this.logger.log('[MOO_PARSE_FAILURE]', {
++                timestamp: new Date().toISOString(),
++                host: this.host,
++                port: this.port,
++                data_length: data?.length,
++                data_type: typeof data,
++                data_preview: data ? (data.slice ? data.slice(0, 200).toString('utf8') : String(data).slice(0, 200)) : null
++            });
              this.close();
+             return;
+         }

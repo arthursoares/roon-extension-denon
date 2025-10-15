@@ -2,7 +2,73 @@
 
 This document explains why we're patching the node-roon-api library and what changes were made.
 
-## Issue Description
+## Latest Update (2025.10.12) - Enhanced Diagnostic Logging
+
+### Purpose
+Added comprehensive diagnostic logging to identify the root cause of disconnections that persist despite the empty frame fix. While empty frames are now handled gracefully, disconnections continue to occur silently with no logging to indicate why.
+
+### Changes Added
+1. **Enhanced MOO Parser Error Logging** (`moo.js`)
+   - Added `[MOO_ERROR]` prefix to all 10+ parse failure points
+   - Includes JSON-serialized message state at point of failure
+   - Captures buffer length and position information
+   - Specific error messages for each failure mode:
+     - Missing Request-Id header
+     - Content-Type without Content-Length
+     - Content-Length without Content-Type
+     - Bad JSON body parsing
+     - Malformed header lines
+     - Invalid MOO protocol format
+     - Message lacks newline in header
+
+2. **WebSocket Close Event Logging** (`transport-websocket.js`)
+   - Logs `[WS_CLOSE]` events with:
+     - Close code (indicates reason per WebSocket spec)
+     - Close reason text
+     - Whether close was clean
+     - Timestamp, host, and port
+
+3. **MOO Parse Failure Logging** (`transport-websocket.js`)
+   - Logs `[MOO_PARSE_FAILURE]` before closing connection
+   - Captures raw data preview (first 200 bytes)
+   - Includes data type and length
+   - Timestamp for correlation with other logs
+
+4. **Full MOO Protocol Logging** (`app.js`)
+   - Added `log_level: "all"` to RoonApi configuration
+   - Enables logging of all MOO protocol messages (REQUEST, CONTINUE, COMPLETE)
+   - Allows correlation between MOO messages and parse failures
+
+### Expected Diagnostic Output
+When a disconnection occurs, logs will now show:
+```
+[WS_CLOSE] { timestamp: '...', host: '...', code: 1006, reason: '', wasClean: false }
+[MOO_PARSE_FAILURE] { timestamp: '...', data_length: 156, data_type: 'object', data_preview: '...' }
+[MOO_ERROR] Missing Request-Id header: {...}
+```
+
+This will reveal exactly which validation is failing and what data is causing the failure.
+
+### Usage
+Run with standard Roon debug logging:
+```bash
+DEBUG=roon-extension-denon:roon node app.js
+```
+
+All diagnostic logs will be visible in standard output alongside Roon connection monitoring.
+
+### Next Steps
+1. Run this diagnostic version for 24-48 hours
+2. Capture logs showing disconnection events
+3. Analyze which MOO_ERROR or parse failure is occurring
+4. Implement targeted fix based on root cause
+5. Release permanent fix in subsequent version
+
+---
+
+## Original Issue (2025.10.11) - Empty Frame Handling
+
+### Issue Description
 
 ### Problem
 The extension was experiencing intermittent disconnections from Roon Core, causing the ConvenienceSwitch and Volume controls to disappear from the Roon UI. This issue was particularly noticeable when pausing playback or when the receiver was in standby mode.

@@ -30,10 +30,11 @@ var roon_connection = {
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-    display_version: "2025.10.11",
+    display_version: "2025.10.12",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
+    log_level: "all", // Enable full MOO protocol logging for diagnostics
 
     core_paired: function (core) {
         const now = new Date().toISOString();
