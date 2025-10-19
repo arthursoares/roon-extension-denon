@@ -73,7 +73,7 @@ class ZoneFunctions {
      * Check status based on power and input state
      * @param {string} power - Power state ("ON" or "STANDBY")
      * @param {string} input - Current input
-     * @returns {string} Status ("selected", "deselected", or "standby")
+     * @returns {string} Status ("selected" or "standby")
      */
     checkStatus(power, input) {
         let stat = "";
@@ -81,7 +81,7 @@ class ZoneFunctions {
             if (input === this.settings.setsource) {
                 stat = "selected";
             } else {
-                stat = "deselected";
+                stat = "standby";
             }
         } else {
             stat = "standby";

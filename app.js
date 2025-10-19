@@ -924,7 +924,7 @@ function check_status(power, input) {
         if (input == mysettings.setsource) {
             stat = "selected";
         } else {
-            stat = "deselected";
+            stat = "standby";
         }
     } else {
         stat = "standby";

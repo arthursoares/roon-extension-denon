@@ -178,9 +178,9 @@ describe('ZoneFunctions', () => {
             expect(result).toBe("selected");
         });
 
-        it('should return "deselected" when power is ON but input does not match', () => {
+        it('should return "standby" when power is ON but input does not match', () => {
             const result = zoneFunctions.checkStatus("ON", "DVD");
-            expect(result).toBe("deselected");
+            expect(result).toBe("standby");
         });
 
         it('should return "standby" when power is STANDBY', () => {
