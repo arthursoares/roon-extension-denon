@@ -26,10 +26,16 @@ COPY --chown=roon:nodejs src/ ./src/
 COPY --chown=roon:nodejs lib/ ./lib/
 COPY --chown=roon:nodejs CLAUDE.md ./
 
+# Create data directory and symlink config.json to persistent volume
+# This ensures Roon API saves settings to the mounted volume
+RUN mkdir -p /usr/src/app/data && \
+    ln -sf /usr/src/app/data/config.json /usr/src/app/config.json && \
+    chown -R roon:nodejs /usr/src/app/data
+
 # Switch to non-root user
 USER roon
 
-# Create volume for persistent data
+# Create volume for persistent data (contains config.json via symlink)
 VOLUME ["/usr/src/app/data"]
 
 # Expose port if needed (Roon extensions typically don't need exposed ports)

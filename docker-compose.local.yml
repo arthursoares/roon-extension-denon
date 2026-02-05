@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  roon-extension-denon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: roon-denon-extension-local
+    restart: unless-stopped
+
+    # Network configuration
+    network_mode: host  # Required for Roon discovery to work properly
+
+    # Mount volume for persistent configuration
+    volumes:
+      - ./data:/usr/src/app/data
+
+    # Environment variables
+    environment:
+      - NODE_ENV=production
+      - DEBUG=roon-extension-denon*  # Enable debug logging
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node app.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

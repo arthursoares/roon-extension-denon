@@ -30,7 +30,7 @@ var roon_connection = {
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-    display_version: "2025.10.12",
+  display_version: "2026.02.05",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
@@ -238,14 +238,22 @@ var svc_settings = new RoonApiSettings(roon, {
         });
     },
     save_settings: function (req, isdryrun, settings) {
-        probeInputs(settings.values).then((settings) => {
-            let l = make_layout(settings);
-            req.send_complete(l.has_error ? "NotValid" : "Success", {
-                settings: l,
-            });
-            delete settings.inputs;
+        probeInputs(settings.values)
+            .then((settings) => {
+                let l = make_layout(settings);
 
-            if (!l.has_error && !isdryrun) {
+                // Bug #8 fix: Explicitly check for errors BEFORE sending response
+                // This ensures we never save settings if probe failed
+                if (l.has_error) {
+                    debug("save_settings: Validation failed, not saving settings: %s", settings.err);
+                    req.send_complete("NotValid", { settings: l });
+                    return; // Early return prevents saving
+                }
+
+                req.send_complete("Success", { settings: l });
+                delete settings.inputs;
+
+                if (!isdryrun) {
                 var old_hostname = mysettings.hostname;
                 var old_setsource = mysettings.setsource;
                 var old_zone = mysettings.zone;
@@ -387,6 +395,15 @@ var svc_settings = new RoonApiSettings(roon, {
                                     }),
                             );
                         }
+
+                        // Bug #2 fix: Track promise completion and log final result
+                        audysseyPromise
+                            .then(() => {
+                                debug("Audyssey: All settings applied successfully");
+                            })
+                            .catch((err) => {
+                                debug("Audyssey: Error applying settings: %O", err);
+                            });
                     }
                 } else {
                     debug(
@@ -397,6 +414,13 @@ var svc_settings = new RoonApiSettings(roon, {
                 debug("Saving settings to config file");
                 roon.save_config("settings", mysettings);
             }
+        })
+        .catch((err) => {
+            // Bug #8 fix: Catch any unexpected errors during save process
+            debug("save_settings: Unexpected error during save: %O", err);
+            settings.values.err = "Internal error: " + err.message;
+            let l = make_layout(settings.values);
+            req.send_complete("NotValid", { settings: l });
         });
     },
 });
@@ -457,6 +481,13 @@ function setup_denon_connection(host) {
         delete denon.audyssey;
     }
     if (denon.client) {
+        // Bug #4 fix: Destroy socket explicitly to ensure all listeners are removed
+        // removeAllListeners() may not remove listeners if socket is actively emitting
+        if (denon.client.socket && !denon.client.socket.destroyed) {
+            debug("setup_denon_connection: Destroying socket to prevent listener leaks");
+            denon.client.socket.destroy();
+        }
+
         // Remove all event listeners to prevent memory leaks
         denon.client.removeAllListeners();
         denon.client.socket.removeAllListeners();
@@ -557,6 +588,12 @@ function setup_denon_connection(host) {
         denon.client.on("powerChanged", (val) => {
             debug("EVENT: powerChanged: val=%s", val);
 
+            // Guard against early events before state is initialized (Bug #6 fix)
+            if (!denon.source_state) {
+                debug("powerChanged: Ignoring event (source_state not initialized yet)");
+                return;
+            }
+
             let old_power_value = denon.source_state.Power;
             denon.source_state.Power = val;
             debug(
@@ -607,6 +644,13 @@ function setup_denon_connection(host) {
 
         denon.client.on("inputChanged", (val) => {
             debug("EVENT: inputChanged: val=%s", val);
+
+            // Guard against early events before state is initialized (Bug #6 fix)
+            if (!denon.source_state) {
+                debug("inputChanged: Ignoring event (source_state not initialized yet)");
+                return;
+            }
+
             let old_Input = denon.source_state.Input;
             denon.source_state.Input = val;
             debug(
@@ -659,6 +703,12 @@ function setup_denon_connection(host) {
         denon.client.on("muteChanged", (val) => {
             debug("muteChanged: val=%s", val);
 
+            // Guard against early events before state is initialized (Bug #6 fix)
+            if (!denon.volume_state) {
+                debug("muteChanged: Ignoring event (volume_state not initialized yet)");
+                return;
+            }
+
             denon.volume_state.is_muted = val === Denon.Options.MuteOptions.On;
             if (denon.volume_control) {
                 denon.volume_control.update_state({
@@ -669,6 +719,12 @@ function setup_denon_connection(host) {
 
         denon.client.on("masterVolumeChanged", (val) => {
             debug("masterVolumeChanged: val=%s", val - 80);
+
+            // Guard against early events before state is initialized (Bug #6 fix)
+            if (!denon.volume_state) {
+                debug("masterVolumeChanged: Ignoring event (volume_state not initialized yet)");
+                return;
+            }
 
             denon.volume_state.volume_value = val - 80;
             if (denon.volume_control) {
@@ -719,6 +775,12 @@ function setup_denon_connection(host) {
             debug("EVENT: zone2Changed: val=%s", val);
 
             if (mysettings.zone === "zone2") {
+                // Guard against early events before state is initialized (Bug #6 fix)
+                if (!denon.source_state) {
+                    debug("zone2Changed: Ignoring event (source_state not initialized yet)");
+                    return;
+                }
+
                 let old_power_value = denon.source_state.Power;
                 denon.source_state.Power =
                     val === Denon.Options.Zone2Options.On ? "ON" : "STANDBY";
@@ -924,7 +986,9 @@ function check_status(power, input) {
         if (input == mysettings.setsource) {
             stat = "selected";
         } else {
-            stat = "standby";
+            // Bug #10 fix: Use "deselected" when power is ON but wrong input
+            // "standby" means device is OFF, "deselected" means device is ON but not active
+            stat = "deselected";
         }
     } else {
         stat = "standby";
@@ -1004,7 +1068,7 @@ function create_volume_control(denon) {
                 debug("set_volume: mode=%s value=%d", mode, value);
 
                 let newvol =
-                    mode == "absolute" ? value : state.volume_value + value;
+                    mode == "absolute" ? value : this.state.volume_value + value;
                 if (newvol < this.state.volume_min)
                     newvol = this.state.volume_min;
                 else if (newvol > this.state.volume_max)
@@ -1196,13 +1260,19 @@ function create_source_control(denon) {
                         applyAudyssey()
                             .then(() => {
                                 debug(
-                                    "convenience_switch: Completed successfully",
+                                    "convenience_switch: Completed successfully (input correct, power on, Audyssey applied)",
                                 );
                                 req.send_complete("Success");
                             })
-                            .catch(() => {
+                            .catch((err) => {
+                                // Bug #7 fix: Log Audyssey errors explicitly but still report success
+                                // Primary operation (power on) succeeded, Audyssey is secondary
                                 debug(
-                                    "convenience_switch: Completed with Audyssey errors (non-fatal)",
+                                    "convenience_switch: WARNING - Audyssey settings failed to apply: %O",
+                                    err,
+                                );
+                                debug(
+                                    "convenience_switch: Primary operation succeeded (power on), reporting Success despite Audyssey failure",
                                 );
                                 req.send_complete("Success");
                             });
