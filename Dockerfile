@@ -24,7 +24,6 @@ RUN npm install --only=production && npm cache clean --force
 COPY --chown=roon:nodejs app.js ./
 COPY --chown=roon:nodejs src/ ./src/
 COPY --chown=roon:nodejs lib/ ./lib/
-COPY --chown=roon:nodejs CLAUDE.md ./
 
 # Create data directory and symlink config.json to persistent volume
 # This ensures Roon API saves settings to the mounted volume

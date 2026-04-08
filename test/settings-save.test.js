@@ -2,6 +2,15 @@
 
 const { describe, test, expect, beforeEach } = require('@jest/globals');
 
+/**
+ * Settings save tests verify the error-handling and validation patterns
+ * used in app.js save_settings flow. Since save_settings is not exported
+ * from app.js, these tests verify the behavioral contract:
+ * - Settings should not be saved when probe fails
+ * - Settings should be saved on successful probe
+ * - Validation rejects invalid values
+ * - Dry runs don't persist
+ */
 describe('Settings Save - Error Handling', () => {
     let mockReq;
     let mockSettings;
@@ -22,122 +31,62 @@ describe('Settings Save - Error Handling', () => {
         };
     });
 
-    describe('Bug #8: Settings save promise rejection not handled', () => {
-        test('should demonstrate partial save on probeInputs failure (RED)', async () => {
-            // RED: Shows the bug - settings get partially saved even when probe fails
-
-            let settingsSaved = false;
-            let errorHandled = false;
-
-            // Simulate the buggy save_settings flow
-            const save_settings_buggy = (req, isdryrun, settings) => {
-                const probeInputs = (settings) => {
-                    // Simulate connection failure
-                    return Promise.reject(new Error("Connection timeout"));
-                };
-
-                probeInputs(settings.values)
-                    .then((settings) => {
-                        // This won't execute due to rejection
-                        req.send_complete("Success");
-                    })
-                    .catch((err) => {
-                        // Error is set on settings object
-                        settings.values.err = err.message;
-                        errorHandled = true;
-                    })
-                    .then(() => {
-                        // BUG: This .then() executes EVEN AFTER catch!
-                        // Settings get saved despite the error
-                        if (!isdryrun) {
-                            settingsSaved = true;
-                            // In real code: roon.save_config("settings", mysettings);
-                        }
-                        return settings;
-                    });
-            };
-
-            await save_settings_buggy(mockReq, false, { values: mockSettings });
-
-            // Wait for promises to settle
-            await new Promise(resolve => setTimeout(resolve, 10));
-
-            // BUG: Settings saved even though probe failed!
-            expect(errorHandled).toBe(true);
-            expect(settingsSaved).toBe(true); // This is the bug!
-            expect(mockSettings.err).toBeDefined();
-        });
-
-        test('should NOT save settings when probeInputs fails (GREEN)', async () => {
-            // GREEN: Proper error handling - don't save on failure
-
+    describe('Bug #8: Settings save must not persist on probe failure', () => {
+        test('should NOT save settings when probeInputs fails', async () => {
             let settingsSaved = false;
             let errorReported = false;
 
-            const save_settings_fixed = async (req, isdryrun, settings) => {
-                const probeInputs = (settings) => {
+            const save_settings = async (req, isdryrun, settings) => {
+                const probeInputs = () => {
                     return Promise.reject(new Error("Connection timeout"));
                 };
 
                 try {
-                    const probed = await probeInputs(settings.values);
-
-                    // Only execute if probe succeeded
+                    await probeInputs();
                     req.send_complete("Success");
-
                     if (!isdryrun) {
                         settingsSaved = true;
                     }
                 } catch (err) {
-                    // Error occurred - set error and report failure
                     settings.values.err = err.message;
                     errorReported = true;
                     req.send_complete("NotValid");
-
-                    // FIXED: Don't save settings on error
-                    // Early return prevents save
-                    return;
                 }
             };
 
-            await save_settings_fixed(mockReq, false, { values: mockSettings });
+            await save_settings(mockReq, false, { values: mockSettings });
 
-            // FIXED: Settings NOT saved when probe failed
             expect(errorReported).toBe(true);
             expect(settingsSaved).toBe(false);
             expect(mockReq.send_complete).toHaveBeenCalledWith("NotValid");
         });
 
-        test('should save settings when probeInputs succeeds (GREEN)', async () => {
+        test('should save settings when probeInputs succeeds', async () => {
             let settingsSaved = false;
 
-            const save_settings_fixed = async (req, isdryrun, settings) => {
-                const probeInputs = (settings) => {
-                    // Simulate successful probe
-                    settings.inputs = [
+            const save_settings = async (req, isdryrun, settings) => {
+                const probeInputs = () => {
+                    settings.values.inputs = [
                         { title: "CBL/SAT", value: "SAT/CBL" },
                         { title: "DVD", value: "DVD" },
                     ];
-                    delete settings.err;
-                    return Promise.resolve(settings);
+                    delete settings.values.err;
+                    return Promise.resolve(settings.values);
                 };
 
                 try {
-                    const probed = await probeInputs(settings.values);
-
+                    await probeInputs();
                     req.send_complete("Success");
-
                     if (!isdryrun) {
                         settingsSaved = true;
                     }
                 } catch (err) {
                     settings.values.err = err.message;
                     req.send_complete("NotValid");
-                    return;
                 }
             };
 
-            await save_settings_fixed(mockReq, false, { values: mockSettings });
+            await save_settings(mockReq, false, { values: mockSettings });
 
             expect(settingsSaved).toBe(true);
             expect(mockReq.send_complete).toHaveBeenCalledWith("Success");
@@ -146,7 +95,7 @@ describe('Settings Save - Error Handling', () => {
     });
 
     describe('Settings validation', () => {
-        test('should validate required fields before saving (GREEN)', () => {
+        test('should validate required fields before saving', () => {
             const validateSettings = (settings) => {
                 const errors = [];
 
@@ -174,7 +123,7 @@ describe('Settings Save - Error Handling', () => {
             expect(errors).toContain('Invalid maxVolumeMode');
         });
 
-        test('should not save settings with validation errors (GREEN)', async () => {
+        test('should not save settings with validation errors', () => {
             let settingsSaved = false;
 
             const save_with_validation = (settings) => {
@@ -193,7 +142,6 @@ describe('Settings Save - Error Handling', () => {
                 return true;
             };
 
-            // Invalid settings
             const invalidSettings = { ...mockSettings, zone: 'invalid' };
             const saved = save_with_validation(invalidSettings);
 
@@ -204,35 +152,33 @@ describe('Settings Save - Error Handling', () => {
     });
 
     describe('Dry run behavior', () => {
-        test('should not save settings when isdryrun is true (GREEN)', async () => {
+        test('should not save settings when isdryrun is true', async () => {
             let settingsSaved = false;
 
-            const save_settings = async (req, isdryrun, settings) => {
+            const save_settings = async (req, isdryrun) => {
                 req.send_complete("Success");
-
                 if (!isdryrun) {
                     settingsSaved = true;
                 }
             };
 
-            await save_settings(mockReq, true, { values: mockSettings });
+            await save_settings(mockReq, true);
 
             expect(settingsSaved).toBe(false);
             expect(mockReq.send_complete).toHaveBeenCalledWith("Success");
         });
 
-        test('should save settings when isdryrun is false (GREEN)', async () => {
+        test('should save settings when isdryrun is false', async () => {
             let settingsSaved = false;
 
-            const save_settings = async (req, isdryrun, settings) => {
+            const save_settings = async (req, isdryrun) => {
                 req.send_complete("Success");
-
                 if (!isdryrun) {
                     settingsSaved = true;
                 }
             };
 
-            await save_settings(mockReq, false, { values: mockSettings });
+            await save_settings(mockReq, false);
 
             expect(settingsSaved).toBe(true);
             expect(mockReq.send_complete).toHaveBeenCalledWith("Success");

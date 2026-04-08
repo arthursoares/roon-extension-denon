@@ -16,6 +16,7 @@ describe('Audyssey Control - Listener Lifecycle', () => {
         mockSocket = {
             write: jest.fn(),
             destroyed: false,
+            writable: true,
         };
 
         // Create mock Denon client with listener tracking
@@ -62,6 +63,7 @@ describe('Audyssey Control - Listener Lifecycle', () => {
                 socket: {
                     write: jest.fn(),
                     destroyed: false,
+                    writable: true,
                 },
                 _listeners: [],
                 on: jest.fn(function(event, listener) {
@@ -113,7 +115,7 @@ describe('Audyssey Control - Listener Lifecycle', () => {
 
             // Now it's safe to replace client
             const newMockClient = {
-                socket: { write: jest.fn(), destroyed: false },
+                socket: { write: jest.fn(), destroyed: false, writable: true },
                 _listeners: [],
                 on: jest.fn(),
                 removeListener: jest.fn(),

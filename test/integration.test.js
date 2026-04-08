@@ -64,7 +64,7 @@ describe('Zone Integration Tests', () => {
 
             // Test different input scenarios
             expect(zoneFunctions.checkStatus("ON", "CBL/SAT")).toBe("selected");
-            expect(zoneFunctions.checkStatus("ON", "DVD")).toBe("standby");
+            expect(zoneFunctions.checkStatus("ON", "DVD")).toBe("deselected");
         });
 
         it('should handle main zone standby correctly', async () => {

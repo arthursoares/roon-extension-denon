@@ -17,11 +17,21 @@ class AudysseyControl {
      */
     cleanup() {
         debug("Cleaning up AudysseyControl - removing %d active listeners", this.activeListeners.length);
-        // Remove all active data listeners
+        // Remove all active data listeners from the current client reference
+        const client = this.denonClient;
         this.activeListeners.forEach(listener => {
-            this.denonClient.removeListener("data", listener);
+            client.removeListener("data", listener);
         });
         this.activeListeners = [];
+    }
+
+    /**
+     * Update the client reference (call cleanup() on old client first)
+     * @param {object} newClient - New DenonClient instance
+     */
+    updateClient(newClient) {
+        this.cleanup();
+        this.denonClient = newClient;
     }
 
     /**
@@ -106,7 +116,11 @@ class AudysseyControl {
         return this._sendCommand("PSREFLEV ?").then((response) => {
             debug("getReferenceLevel response: %s", response);
             const value = response.replace("PSREFLEV ", "");
-            return parseInt(value, 10);
+            const level = parseInt(value, 10);
+            if (isNaN(level)) {
+                throw new Error(`Unexpected response for PSREFLEV: ${response}`);
+            }
+            return level;
         });
     }
 
@@ -132,7 +146,11 @@ class AudysseyControl {
         return this._sendCommand(command).then((response) => {
             debug("setReferenceLevel response: %s", response);
             const value = response.replace("PSREFLEV ", "");
-            return parseInt(value, 10);
+            const level = parseInt(value, 10);
+            if (isNaN(level)) {
+                throw new Error(`Unexpected response for PSREFLEV: ${response}`);
+            }
+            return level;
         });
     }
 
@@ -183,7 +201,7 @@ class AudysseyControl {
         return new Promise((resolve, reject) => {
             const socket = this.denonClient.socket;
 
-            if (!socket || socket.destroyed) {
+            if (!socket || socket.destroyed || !socket.writable) {
                 return reject(new Error("Socket not connected"));
             }
 
@@ -219,7 +237,13 @@ class AudysseyControl {
             // Send command
             const fullCommand = command + "\r";
             debug("_sendCommand sending: %s", command);
-            socket.write(fullCommand);
+            try {
+                socket.write(fullCommand);
+            } catch (err) {
+                this._removeListener(onData);
+                clearTimeout(timeout);
+                reject(err);
+            }
         });
     }
 

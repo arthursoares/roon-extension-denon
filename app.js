@@ -30,7 +30,7 @@ var roon_connection = {
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-  display_version: "2026.02.05",
+  display_version: "2026.04.08",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
@@ -481,6 +481,9 @@ function setup_denon_connection(host) {
         delete denon.audyssey;
     }
     if (denon.client) {
+        // Flag intentional close so the 'close' event handler skips reconnect
+        denon.intentionalClose = true;
+
         // Bug #4 fix: Destroy socket explicitly to ensure all listeners are removed
         // removeAllListeners() may not remove listeners if socket is actively emitting
         if (denon.client.socket && !denon.client.socket.destroyed) {
@@ -490,7 +493,9 @@ function setup_denon_connection(host) {
 
         // Remove all event listeners to prevent memory leaks
         denon.client.removeAllListeners();
-        denon.client.socket.removeAllListeners();
+        if (denon.client.socket) {
+            denon.client.socket.removeAllListeners();
+        }
         denon.client.disconnect();
         delete denon.client;
     }
@@ -556,11 +561,19 @@ function setup_denon_connection(host) {
 
         denon.client.on("close", (had_error) => {
             debug(
-                "LIFECYCLE: Connection closed - had_error=%s, source_control_exists=%s, volume_control_exists=%s",
+                "LIFECYCLE: Connection closed - had_error=%s, source_control_exists=%s, volume_control_exists=%s, intentional=%s",
                 had_error,
                 !!denon.source_control,
                 !!denon.volume_control,
+                !!denon.intentionalClose,
             );
+
+            // Skip reconnect if this was an intentional teardown (e.g. hostname change)
+            if (denon.intentionalClose) {
+                debug("LIFECYCLE: Intentional close, skipping reconnect");
+                denon.intentionalClose = false;
+                return;
+            }
 
             if (denon.client) {
                 svc_status.set_status(
@@ -735,6 +748,12 @@ function setup_denon_connection(host) {
         });
 
         denon.client.on("masterVolumeMaxChanged", (val) => {
+            // Guard against early events before state is initialized (Bug #6 fix)
+            if (!denon.volume_state) {
+                debug("masterVolumeMaxChanged: Ignoring event (volume_state not initialized yet)");
+                return;
+            }
+
             const newMaxVolume = val - 80;
             debug(
                 "masterVolumeMaxChanged: val=%s (current=%s, mode=%s)",
@@ -1137,7 +1156,7 @@ function create_volume_control(denon) {
             denon.volume_state.is_muted = val === Denon.Options.MuteOptions.On;
             if (denon.volume_control) {
                 denon.volume_control.update_state(denon.volume_state);
-            } else {
+            } else if (device) {
                 debug("Registering volume control extension");
                 debug_roon(
                     "CONTROL REGISTRATION: Volume control being registered with Roon - display_name=%s, volume=%s dB, muted=%s, roon_connected=%s",
@@ -1306,6 +1325,9 @@ function create_source_control(denon) {
                             debug("standby: Failed with error: %O", error);
                             req.send_complete("Failed");
                         });
+                }).catch((error) => {
+                    debug("standby: Failed to get power state: %O", error);
+                    req.send_complete("Failed");
                 });
             },
         };
@@ -1347,7 +1369,7 @@ function create_source_control(denon) {
                     "create_source_control: State updated with status=%s",
                     denon.source_state.status,
                 );
-            } else {
+            } else if (device) {
                 debug(
                     "create_source_control: Registering NEW source control extension with Roon",
                 );

@@ -1,6 +1,7 @@
 "use strict";
 
 const debug = require("debug")("roon-extension-denon:zone");
+const Denon = require("../lib/denon-client");
 
 /**
  * Zone-specific helper functions for Denon/Marantz receiver control
@@ -18,7 +19,6 @@ class ZoneFunctions {
     getPowerForZone() {
         if (this.settings.zone === "zone2") {
             return this.denonClient.getZone2().then(status => {
-                const Denon = require("../lib/denon-client");
                 return (status === Denon.Options.Zone2Options.On) ? "ON" : "STANDBY";
             });
         } else {
@@ -33,7 +33,6 @@ class ZoneFunctions {
      */
     setPowerForZone(powerState) {
         if (this.settings.zone === "zone2") {
-            const Denon = require("../lib/denon-client");
             const zone2State = (powerState === "ON") ?
                 Denon.Options.Zone2Options.On :
                 Denon.Options.Zone2Options.Off;
@@ -53,7 +52,6 @@ class ZoneFunctions {
 
         if (this.settings.powerOffBothZones && powerState === "STANDBY") {
             // Turn off both zones when powering off
-            const Denon = require("../lib/denon-client");
             const mainZonePromise = this.denonClient.setPower("STANDBY");
             const zone2Promise = this.denonClient.setZone2(Denon.Options.Zone2Options.Off);
 
@@ -81,7 +79,7 @@ class ZoneFunctions {
             if (input === this.settings.setsource) {
                 stat = "selected";
             } else {
-                stat = "standby";
+                stat = "deselected";
             }
         } else {
             stat = "standby";

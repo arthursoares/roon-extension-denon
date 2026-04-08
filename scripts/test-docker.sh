@@ -3,6 +3,9 @@
 # Test script for Docker functionality
 set -e
 
+# Clean up test container on exit (success or failure)
+trap 'docker stop roon-extension-test 2>/dev/null; docker rm roon-extension-test 2>/dev/null' EXIT
+
 echo "🐳 Testing Docker build and functionality..."
 
 # Check if Docker is available
