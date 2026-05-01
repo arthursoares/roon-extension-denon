@@ -30,7 +30,7 @@ var roon_connection = {
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-  display_version: "2026.04.08",
+  display_version: "2026.05.01",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
@@ -468,8 +468,35 @@ function queryInputs(hostname) {
     );
 }
 
+function destroy_stale_controls(host) {
+    // Hostname cleared → no receiver, both controls must go.
+    // Switched to Zone 2 → no volume API on the wire, drop volume control.
+    // Source cleared → drop source control.
+    const dropVolume = !host || mysettings.zone !== "main";
+    const dropSource = !host || !mysettings.setsource;
+
+    if (dropVolume && denon.volume_control) {
+        debug_roon("CONTROL TEARDOWN: Destroying stale volume_control (host=%s, zone=%s)", host, mysettings.zone);
+        try { denon.volume_control.destroy(); } catch (e) { debug("destroy_stale_controls: volume_control.destroy threw %O", e); }
+        delete denon.volume_control;
+        delete denon.volume_state;
+    }
+    if (dropSource && denon.source_control) {
+        debug_roon("CONTROL TEARDOWN: Destroying stale source_control (host=%s, setsource=%s)", host, mysettings.setsource);
+        try { denon.source_control.destroy(); } catch (e) { debug("destroy_stale_controls: source_control.destroy threw %O", e); }
+        delete denon.source_control;
+        delete denon.source_state;
+    }
+}
+
 function setup_denon_connection(host) {
     debug("setup_denon_connection (" + host + ")");
+
+    // Cancel any pending reconnect — settings change or explicit setup supersedes it.
+    if (denon.reconnectTimer) {
+        clearTimeout(denon.reconnectTimer);
+        denon.reconnectTimer = null;
+    }
 
     if (denon.keepalive) {
         clearInterval(denon.keepalive);
@@ -499,6 +526,10 @@ function setup_denon_connection(host) {
         denon.client.disconnect();
         delete denon.client;
     }
+
+    // Tear down Roon-side controls that no longer match the new settings, so
+    // Roon doesn't keep showing stale Volume/Source devices after a config change.
+    destroy_stale_controls(host);
 
     if (!host) {
         svc_status.set_status("Not configured, please check settings.", true);
@@ -583,7 +614,8 @@ function setup_denon_connection(host) {
                 debug(
                     "LIFECYCLE: Scheduling reconnection in 1 second... (will recreate client to prevent memory leaks)",
                 );
-                setTimeout(() => {
+                denon.reconnectTimer = setTimeout(() => {
+                    denon.reconnectTimer = null;
                     debug("LIFECYCLE: Executing reconnection attempt - calling setup_denon_connection to clean up and recreate client");
                     setup_denon_connection(mysettings.hostname);
                 }, 1000);
@@ -862,13 +894,15 @@ function setup_denon_connection(host) {
                 return;
             }
 
-            // Make regular calls to getBrightness for keep-alive.
-            denon.client.getBrightness()
+            // Poll getPower() for keep-alive — receivers respond reliably to PW?
+            // (the previous getBrightness/SSDIM query is unsupported on some firmwares
+            // and silently times out, leaving the keep-alive non-functional).
+            denon.client.getPower()
                 .then((val) => {
-                    debug_keepalive("Keep-Alive: getBrightness == %s", val);
+                    debug_keepalive("Keep-Alive: getPower == %s", val);
                 })
                 .catch((err) => {
-                    debug_keepalive("Keep-Alive: getBrightness failed: %O", err);
+                    debug_keepalive("Keep-Alive: getPower failed: %O", err);
                 });
         }, 60000);
 
@@ -951,10 +985,42 @@ function connect() {
         })
         .catch((error) => {
             debug(
-                "LIFECYCLE: Connection error during setup. Error: %O. Will not retry automatically from here.",
+                "LIFECYCLE: Connection error during setup. Error: %O. Tearing down and scheduling reconnect.",
                 error,
             );
             svc_status.set_status("Could not connect receiver: " + error, true);
+
+            // A failure between TCP connect and finishing setup (e.g. getVolume/getInput
+            // timeout) leaves the client and keep-alive interval in a half-initialized state.
+            // Tear them down and trigger the same recovery path as a socket close.
+            if (denon.keepalive) {
+                clearInterval(denon.keepalive);
+                denon.keepalive = null;
+            }
+            if (denon.audyssey) {
+                denon.audyssey.cleanup();
+                delete denon.audyssey;
+            }
+            if (denon.client) {
+                denon.intentionalClose = true;
+                if (denon.client.socket && !denon.client.socket.destroyed) {
+                    denon.client.socket.destroy();
+                }
+                denon.client.removeAllListeners();
+                if (denon.client.socket) {
+                    denon.client.socket.removeAllListeners();
+                }
+                try { denon.client.disconnect(); } catch (e) { /* socket may already be gone */ }
+                delete denon.client;
+            }
+
+            if (mysettings.hostname && !denon.reconnectTimer) {
+                debug("LIFECYCLE: Scheduling post-setup-failure reconnect in 5 seconds");
+                denon.reconnectTimer = setTimeout(() => {
+                    denon.reconnectTimer = null;
+                    setup_denon_connection(mysettings.hostname);
+                }, 5000);
+            }
         });
 }
 

@@ -209,6 +209,32 @@ describe('Connection Lifecycle - Memory Leak Prevention', () => {
             expect(denon.keepalive).toBeNull();
         });
 
+        test('keep-alive polls getPower (not getBrightness) and skips while in standby', () => {
+            // Mirrors the interval body in app.js setup_denon_connection().
+            // getBrightness/SSDIM is unsupported on some receiver firmwares — using
+            // getPower (PW?) since the receiver always responds to it.
+            const client = {
+                getPower: jest.fn().mockResolvedValue('ON'),
+                getBrightness: jest.fn().mockResolvedValue('BRI'),
+            };
+            const state = { source_state: { Power: 'ON' } };
+
+            const tick = () => {
+                if (state.source_state && state.source_state.Power === 'STANDBY') return;
+                return client.getPower().then(() => {}).catch(() => {});
+            };
+
+            return tick().then(() => {
+                expect(client.getPower).toHaveBeenCalledTimes(1);
+                expect(client.getBrightness).not.toHaveBeenCalled();
+
+                // Standby short-circuit: no command issued
+                state.source_state.Power = 'STANDBY';
+                tick();
+                expect(client.getPower).toHaveBeenCalledTimes(1);
+            });
+        });
+
         test('should not create multiple keep-alive intervals (GREEN)', () => {
             // This tests that we clear old interval before creating new one
 
