@@ -30,7 +30,7 @@ var roon_connection = {
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-  display_version: "2026.05.01",
+  display_version: "2026.05.07",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
@@ -1032,37 +1032,47 @@ function apply_audyssey_settings() {
         mysettings.audyssey.referenceLevel,
     );
 
+    // Each step has its own .catch so a failure in one setting does not
+    // skip the others. Without this, a rejection from setDynamicEQ would
+    // short-circuit the whole chain and leave PSREFLEV unset.
     return denon.audyssey
         .setDynamicEQ(mysettings.audyssey.dynamicEQ)
-        .then(() => {
+        .then(() =>
             debug(
                 "Audyssey: Dynamic EQ applied: %s",
                 mysettings.audyssey.dynamicEQ,
-            );
-            return denon.audyssey.setDynamicVolume(
-                mysettings.audyssey.dynamicVolume,
-            );
-        })
-        .then(() => {
+            ),
+        )
+        .catch((error) =>
+            debug("Audyssey: Failed to set Dynamic EQ: %O", error),
+        )
+        .then(() =>
+            denon.audyssey.setDynamicVolume(mysettings.audyssey.dynamicVolume),
+        )
+        .then(() =>
             debug(
                 "Audyssey: Dynamic Volume applied: %s",
                 mysettings.audyssey.dynamicVolume,
-            );
-            return denon.audyssey.setReferenceLevel(
+            ),
+        )
+        .catch((error) =>
+            debug("Audyssey: Failed to set Dynamic Volume: %O", error),
+        )
+        .then(() =>
+            denon.audyssey.setReferenceLevel(
                 mysettings.audyssey.referenceLevel,
-            );
-        })
-        .then(() => {
+            ),
+        )
+        .then(() =>
             debug(
                 "Audyssey: Reference Level applied: %s",
                 mysettings.audyssey.referenceLevel,
-            );
-            debug("Audyssey: All settings applied successfully");
-        })
-        .catch((error) => {
-            debug("Audyssey: Error applying settings: %O", error);
-            // Don't fail connection if Audyssey settings fail
-        });
+            ),
+        )
+        .catch((error) =>
+            debug("Audyssey: Failed to set Reference Level: %O", error),
+        )
+        .then(() => debug("Audyssey: All settings applied successfully"));
 }
 
 function check_status(power, input) {

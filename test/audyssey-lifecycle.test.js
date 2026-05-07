@@ -1,6 +1,6 @@
 "use strict";
 
-const { describe, test, expect, beforeEach } = require('@jest/globals');
+const { describe, test, expect, beforeEach, afterEach } = require('@jest/globals');
 
 describe('Audyssey Control - Listener Lifecycle', () => {
     let AudysseyControl;
@@ -41,6 +41,12 @@ describe('Audyssey Control - Listener Lifecycle', () => {
 
         // Import module
         AudysseyControl = require("../src/audyssey-control");
+    });
+
+    afterEach(() => {
+        // Defensive: ensure real timers are restored even if a test
+        // throws before reaching its own jest.useRealTimers() call.
+        jest.useRealTimers();
     });
 
     describe('Bug #9: Audyssey listener cleanup with client replacement', () => {
@@ -149,23 +155,47 @@ describe('Audyssey Control - Listener Lifecycle', () => {
     });
 
     describe('Timeout cleanup', () => {
-        test('should cleanup listener when timeout occurs (GREEN)', async () => {
+        // Set commands resolve on timeout: the receiver suppresses the
+        // echo when the requested value already matches current state, so
+        // a silent timeout means "already there" rather than a failure.
+        test('should resolve set command and cleanup listener on timeout (GREEN)', async () => {
             jest.useFakeTimers();
 
             audyssey = new AudysseyControl(mockClient);
 
-            // Start command that will timeout
+            // Start set command that will timeout (no echo simulated)
             const commandPromise = audyssey.setDynamicEQ(true);
 
             expect(audyssey.activeListeners.length).toBe(1);
 
-            // Fast-forward past timeout (5000ms)
-            jest.advanceTimersByTime(6000);
+            // Fast-forward past timeout (2000ms)
+            jest.advanceTimersByTime(2500);
 
-            // Wait for promise to reject
-            await expect(commandPromise).rejects.toThrow('Timeout');
+            // Set commands resolve on timeout (returns true since target was ON)
+            await expect(commandPromise).resolves.toBe(true);
 
             // Listener should be cleaned up after timeout
+            expect(audyssey.activeListeners.length).toBe(0);
+
+            jest.useRealTimers();
+        });
+
+        // Query commands still reject on timeout: we genuinely need data,
+        // so silence is a real failure.
+        test('should reject query command and cleanup listener on timeout (GREEN)', async () => {
+            jest.useFakeTimers();
+
+            audyssey = new AudysseyControl(mockClient);
+
+            // Start query command that will timeout
+            const commandPromise = audyssey.getDynamicEQ();
+
+            expect(audyssey.activeListeners.length).toBe(1);
+
+            jest.advanceTimersByTime(2500);
+
+            await expect(commandPromise).rejects.toThrow('Timeout');
+
             expect(audyssey.activeListeners.length).toBe(0);
 
             jest.useRealTimers();

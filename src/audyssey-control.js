@@ -207,6 +207,7 @@ class AudysseyControl {
 
             // Set up one-time listener for this specific command response
             const commandPrefix = command.split(" ")[0];
+            const isQuery = command.includes("?");
             let responseReceived = false;
 
             const onData = (data) => {
@@ -222,13 +223,23 @@ class AudysseyControl {
                 }
             };
 
-            // Timeout after 5 seconds
+            // Denon receivers do not echo set commands when the requested
+            // value already matches the current state, so a 2s window is
+            // both responsive and enough for a real echo when state changes.
             const timeout = setTimeout(() => {
                 if (!responseReceived) {
                     this._removeListener(onData);
-                    reject(new Error(`Timeout waiting for response to: ${command}`));
+                    if (isQuery) {
+                        reject(new Error(`Timeout waiting for response to: ${command}`));
+                    } else {
+                        debug(
+                            "_sendCommand: no echo for '%s' — assuming already in target state",
+                            command,
+                        );
+                        resolve(command);
+                    }
                 }
-            }, 5000);
+            }, 2000);
 
             // Listen for response and track it
             this._addListener(onData);
