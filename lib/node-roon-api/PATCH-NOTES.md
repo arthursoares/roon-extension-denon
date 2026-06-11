@@ -2,7 +2,20 @@
 
 This document explains why we're patching the node-roon-api library and what changes were made.
 
-## Latest Update (2025.10.12) - Enhanced Diagnostic Logging
+## Latest Update (2026.06.11) - Reconnect Deadlock Fix
+
+### Problem
+After a connection loss, the extension could permanently stop reconnecting to the Roon Core until the process was restarted, leaving the volume/source controls missing from Roon.
+
+### Root Cause
+`Transport.prototype.close()` in `transport-websocket.js` only invoked the `onclose()` callback if the WebSocket had successfully opened (`_isonopencalled` guard). When a reconnect attempt failed *before* the socket opened (e.g., the core was still rebooting and refused the connection), `onclose()` never fired. `lib.js` only deletes its `_sood_conns[unique_id]` entry inside that callback, and while the entry exists every future discovery response from that core is ignored (`if (this._sood_conns[msg.props.unique_id]) return;`). One failed connection attempt therefore wedged discovery forever.
+
+### Fix
+Remove the `_isonopencalled` condition so `onclose()` always fires exactly once (still guarded by `_onclosecalled`), letting discovery clean up and reconnect on the next sood response.
+
+---
+
+## Update (2025.10.12) - Enhanced Diagnostic Logging
 
 ### Purpose
 Added comprehensive diagnostic logging to identify the root cause of disconnections that persist despite the empty frame fix. While empty frames are now handled gracefully, disconnections continue to occur silently with no logging to indicate why.

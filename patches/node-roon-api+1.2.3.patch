@@ -84,7 +84,7 @@ index 13d65e6..9eb6fce 100644
  };
  
 diff --git a/node_modules/node-roon-api/transport-websocket.js b/node_modules/node-roon-api/transport-websocket.js
-index e46b0eb..fa154bb 100644
+index e46b0eb..08725e5 100644
 --- a/node_modules/node-roon-api/transport-websocket.js
 +++ b/node_modules/node-roon-api/transport-websocket.js
 @@ -34,7 +34,16 @@ function Transport(ip, port, logger) {
@@ -134,3 +134,16 @@ index e46b0eb..fa154bb 100644
              this.close();
              return;
          }
+@@ -73,7 +102,11 @@ Transport.prototype.close = function() {
+         this.ws = undefined;
+     }
+ 
+-    if (!this._onclosecalled && this._isonopencalled) {
++    // Always fire onclose, even if the WebSocket never reached the open
++    // state: lib.js only removes its _sood_conns entry inside this callback,
++    // and a leaked entry makes the extension ignore every future discovery
++    // response from that core until the process restarts.
++    if (!this._onclosecalled) {
+         this._onclosecalled = true;
+         this.onclose();
+     }

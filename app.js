@@ -11,8 +11,11 @@ var debug = require("debug")("roon-extension-denon"),
     RoonApiVolumeControl = require("node-roon-api-volume-control"),
     RoonApiSourceControl = require("node-roon-api-source-control"),
     AudysseyControl = require("./src/audyssey-control"),
+    ConfigStore = require("./src/config-store"),
     fetch = require("node-fetch"),
     parse = require("fast-xml-parser");
+
+var config_store = new ConfigStore(__dirname);
 
 var denon = {};
 
@@ -30,11 +33,18 @@ var roon_connection = {
 var roon = new RoonApi({
     extension_id: "org.pruessmann.roon.denon",
     display_name: "Denon/Marantz AVR",
-  display_version: "2026.05.07",
+  display_version: "2026.06.11",
     publisher: "Doc Bobo",
     email: "docbobo@pm.me",
     website: "https://github.com/docbobo/roon-extension-denon",
     log_level: "all", // Enable full MOO protocol logging for diagnostics
+
+    // Persist the pairing token through ConfigStore instead of the library
+    // default, which swallows fs errors silently. Losing the token makes Roon
+    // treat the extension as a new instance on reconnect and drops the zone's
+    // control bindings.
+    get_persisted_state: () => config_store.load("roonstate") || {},
+    set_persisted_state: (state) => config_store.save("roonstate", state),
 
     core_paired: function (core) {
         const now = new Date().toISOString();
@@ -100,7 +110,24 @@ var roon = new RoonApi({
     },
 });
 
-var mysettings = roon.load_config("settings") || {
+// Surface the persistence state at startup so a broken volume mount is
+// visible immediately instead of failing silently months later.
+{
+    const state = config_store.load("roonstate") || {};
+    const token_count = state.tokens ? Object.keys(state.tokens).length : 0;
+    debug_roon(
+        "CONFIG: persisted state at %s — %d pairing token(s) stored",
+        config_store.configPath,
+        token_count,
+    );
+    if (token_count === 0) {
+        debug_roon(
+            "CONFIG: no pairing token on disk — Roon will issue a new extension identity on next pairing and zone control bindings may need to be reconfigured once",
+        );
+    }
+}
+
+var mysettings = config_store.load("settings") || {
     hostname: "",
     setsource: "",
     zone: "main",
@@ -412,7 +439,7 @@ var svc_settings = new RoonApiSettings(roon, {
                 }
 
                 debug("Saving settings to config file");
-                roon.save_config("settings", mysettings);
+                config_store.save("settings", mysettings);
             }
         })
         .catch((err) => {
@@ -1501,6 +1528,26 @@ setInterval(() => {
         debug_roon(
             "CONNECTION HEALTH WARNING: Roon is connected but no controls are registered! This may indicate a problem.",
         );
+    }
+
+    // Watchdog: a failed reconnect attempt can leave node-roon-api ignoring
+    // the core's discovery responses forever (stale _sood_conns entry). If we
+    // were paired before and have been unpaired for too long, exit and let
+    // Docker's restart policy bring us back with a clean slate.
+    const UNPAIRED_EXIT_MS = 5 * 60 * 1000;
+    if (
+        !roon_connection.connected &&
+        roon_connection.pair_count > 0 &&
+        roon_connection.last_unpaired
+    ) {
+        const unpaired_ms =
+            Date.now() - new Date(roon_connection.last_unpaired);
+        if (unpaired_ms > UNPAIRED_EXIT_MS) {
+            console.error(
+                `[WATCHDOG] Unpaired from Roon core for ${Math.round(unpaired_ms / 1000)}s — exiting so the container restarts with a clean connection state.`,
+            );
+            process.exit(1);
+        }
     }
 }, 60000); // Log every 60 seconds
 
