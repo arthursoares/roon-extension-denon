@@ -1,3 +1,25 @@
+diff --git a/node_modules/node-roon-api/lib.js b/node_modules/node-roon-api/lib.js
+index c8a8062..7244d45 100644
+--- a/node_modules/node-roon-api/lib.js
++++ b/node_modules/node-roon-api/lib.js
+@@ -135,6 +135,17 @@ function RoonApi(o) {
+                 this._sood.on('message', msg => {
+                     //this.logger.log(msg);
+                     if (msg.props.service_id === "00720724-5143-4a9b-abac-0e50cba674bb" && msg.props.unique_id) {
++                        // When a core is reachable over multiple interfaces
++                        // (e.g. LAN and a VPN like ZeroTier), discovery is a
++                        // race and the winning path varies per reconnect. Roon
++                        // scopes the extension identity by host address, so a
++                        // flapping path silently breaks the zone's volume and
++                        // source control bindings. ROON_CORE_IP pins discovery
++                        // to one core address to keep the identity stable.
++                        if (typeof(process) !== "undefined" && process.env && process.env.ROON_CORE_IP && msg.from.ip !== process.env.ROON_CORE_IP) {
++                            this.logger.log("Ignoring discovery response from " + msg.from.ip + " (ROON_CORE_IP=" + process.env.ROON_CORE_IP + ")");
++                            return;
++                        }
+                         if (this._sood_conns[msg.props.unique_id]) {
+                             return;
+                         }
 diff --git a/node_modules/node-roon-api/moo.js b/node_modules/node-roon-api/moo.js
 index 13d65e6..9eb6fce 100644
 --- a/node_modules/node-roon-api/moo.js

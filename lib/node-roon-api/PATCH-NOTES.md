@@ -2,7 +2,28 @@
 
 This document explains why we're patching the node-roon-api library and what changes were made.
 
-## Latest Update (2026.06.11) - Reconnect Deadlock Fix
+## Latest Update (2026.06.12) - ROON_CORE_IP Discovery Pinning
+
+### Problem
+The zone's volume/source control bindings broke on extension reconnects, showing "Volume control is fixed" until the device was manually re-selected in the zone's Device Setup — even when the pairing token was stable.
+
+### Root Cause
+When the Roon Core and the extension host are both reachable over multiple networks (LAN + ZeroTier in this deployment), the core answers sood discovery on every interface and the extension connects to whichever response arrives first. The core scopes the extension's identity by host address (`extension_host` in the registry response), so when the winning path flips between reconnects (observed: `10.147.19.106` at one boot, `192.168.0.110` at the next), the zone bindings point at the "other" extension identity and stop resolving.
+
+### Fix
+In `lib.js`, the sood message handler honors an optional `ROON_CORE_IP` environment variable: discovery responses from any other address are ignored, making the connection path — and therefore the extension identity — deterministic. When the variable is unset, behavior is unchanged.
+
+### Deployment
+Set in docker-compose (use the core's LAN IP):
+```yaml
+environment:
+  - ROON_CORE_IP=192.168.0.108
+```
+After deploying, re-select the volume/source controls in the zone's Device Setup once; bindings then survive reconnects.
+
+---
+
+## Update (2026.06.11) - Reconnect Deadlock Fix
 
 ### Problem
 After a connection loss, the extension could permanently stop reconnecting to the Roon Core until the process was restarted, leaving the volume/source controls missing from Roon.

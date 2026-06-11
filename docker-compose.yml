@@ -18,7 +18,12 @@ services:
       - NODE_ENV=production
       - DEBUG=roon-extension-denon*  # Enable debug logging (excludes raw receiver data)
       # - DEBUG=roon-extension-denon*,roon-extension-denon:data  # Include raw receiver data
-    
+      # Pin discovery to the Roon Core's LAN IP. Required when the core is
+      # reachable over multiple networks (e.g. LAN + ZeroTier/Tailscale):
+      # Roon scopes the extension identity by host address, so a flapping
+      # connection path breaks the zone's volume/source control bindings.
+      # - ROON_CORE_IP=192.168.0.108
+
     # Health check
     healthcheck:
       test: ["CMD", "pgrep", "-f", "node app.js"]
